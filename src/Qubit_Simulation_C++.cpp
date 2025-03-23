@@ -333,7 +333,7 @@ class Qubit_Simulation{
 
 	}
 
-	int GetSituation(int situation){
+	int GetSituation(const int situation){
 
 		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
 
@@ -349,6 +349,11 @@ class Qubit_Simulation{
 
 	}
 
+	bool IsQubitUnoperable(const int situation){
+
+		return (Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end()||IsObservered(situation));
+
+	}
 
 	public:
 
@@ -366,6 +371,7 @@ class Qubit_Simulation{
 			Entangled_Qubit_Set[count]=&Entangled_Qubit_Set_Pointer[count];
 
 	};
+
 	void ResetQubitSet(){
 
 		Qubit_Amount=0;
@@ -374,6 +380,7 @@ class Qubit_Simulation{
 		Entangled_Qubit_Set_Pointer.clear();
 
 	}
+
 	void OuputEntangledQubitSet(const int situation){
 
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
@@ -422,12 +429,7 @@ class Qubit_Simulation{
 
 		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
 
-		int Qubit_Situation=-1;
-			for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-				if(Qubit_Set[count]==situation)
-					Qubit_Situation=count;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long int count=0;count<(Qubit_Set_Value.size()>>1)-(Qubit_Set_Value.size()==2);count++)
 			if(Qubit_Set_Value[BitAdd(count,Qubit_Situation,State)].Real!=0||Qubit_Set_Value[BitAdd(count,Qubit_Situation,State)].Imaginary!=0)
@@ -453,15 +455,7 @@ class Qubit_Simulation{
 		std::pair<std::vector<int>,std::vector<complex>>* Qubit_Set_Pointer=Entangled_Qubit_Set[situation];
 		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
 
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return -1;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		std::vector<complex> Qubit_Set_Value=Entangled_Qubit_Set[situation]->second;
 		long long int Probability0=0,Probability1=0;
@@ -588,10 +582,7 @@ class Qubit_Simulation{
 
 	void Hadamard(const int situation){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -610,10 +601,7 @@ class Qubit_Simulation{
 
 	void PauliX(const int situation){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -626,10 +614,7 @@ class Qubit_Simulation{
 
 	void PauliY(const int situation){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -648,10 +633,7 @@ class Qubit_Simulation{
 
 	void PauliZ(const int situation){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -663,10 +645,7 @@ class Qubit_Simulation{
 
 	void PhaseS(const int situation){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -678,10 +657,7 @@ class Qubit_Simulation{
 
 	void PhaseT(const int situation){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -694,10 +670,7 @@ class Qubit_Simulation{
 
 	void PhaseRz(const int situation,const double Angle){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -716,13 +689,8 @@ class Qubit_Simulation{
 
 	void PhaseRx(const int situation,const double Angle){
 
-		if(IsObservered(situation))
+		if(IsQubitUnoperable(situation))
 			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
-			return ;
-
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
 
 		int Qubit_Situation=GetSituation(situation);
 
@@ -743,10 +711,7 @@ class Qubit_Simulation{
 
 	void PhaseRy(const int situation,const double Angle){
 
-		if(IsObservered(situation))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
+		if(IsQubitUnoperable(situation))
 			return ;
 
 		int Qubit_Situation=GetSituation(situation);
@@ -770,10 +735,9 @@ class Qubit_Simulation{
 
 	void CNOT(const int situation1,const int situation2){
 
-		if(IsObservered(situation1)||IsObservered(situation2))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||situation1==situation2)
+		if(IsQubitUnoperable(situation1)||
+		   IsQubitUnoperable(situation2)||
+		   situation1!=situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -789,10 +753,9 @@ class Qubit_Simulation{
 
 	void CZ(const int situation1,const int situation2){
 
-		if(IsObservered(situation1)||IsObservered(situation2))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||situation1==situation2)
+		if(IsQubitUnoperable(situation1)||
+		   IsQubitUnoperable(situation2)||
+		   situation1!=situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -808,10 +771,9 @@ class Qubit_Simulation{
 
 	void SWAP(const int situation1,const int situation2){
 
-		if(IsObservered(situation1)||IsObservered(situation2))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||situation1==situation2)
+		if(IsQubitUnoperable(situation1)||
+		   IsQubitUnoperable(situation2)||
+		   situation1!=situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -827,12 +789,9 @@ class Qubit_Simulation{
 
 	void iSWAP(const int situation1,const int situation2){
 
-		if(IsObservered(situation1)||IsObservered(situation2))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||
-		   Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||
-		   situation1==situation2)
+		if(IsQubitUnoperable(situation1)||
+		   IsQubitUnoperable(situation2)||
+		   situation1!=situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -854,12 +813,9 @@ class Qubit_Simulation{
 
 	void CSWAP(const int situation1,const int situation2,const int situation3){
 
-		if(IsObservered(situation1)||IsObservered(situation2)||IsObservered(situation3))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||
-		   Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||
-		   Entangled_Qubit_Set.find(situation3)==Entangled_Qubit_Set.end()||
+		if(IsQubitUnoperable(situation1)||
+		   IsQubitUnoperable(situation2)||
+		   IsQubitUnoperable(situation3)||
 		   situation1==situation2||
 		   situation1==situation3||
 		   situation1==situation3)
@@ -884,12 +840,9 @@ class Qubit_Simulation{
 
 	void CCNOT(const int situation1,const int situation2,const int situation3){
 
-		if(IsObservered(situation1)||IsObservered(situation2)||IsObservered(situation3))
-			return ;
-
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||
-		   Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||
-		   Entangled_Qubit_Set.find(situation3)==Entangled_Qubit_Set.end()||
+		if(IsQubitUnoperable(situation1)||
+		   IsQubitUnoperable(situation2)||
+		   IsQubitUnoperable(situation3)||
 		   situation1==situation2||
 		   situation1==situation3||
 		   situation1==situation3)
