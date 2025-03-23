@@ -15,7 +15,7 @@ class Qubit_Simulation{
 
 		static constexpr const long long int Fixed_Point=(1LL<<62);
 		static constexpr const int Fixed_shift=62;
-		static constexpr const double Root_half=(1.0/sqrt(2.0));
+		static constexpr const double Root_half=0.70710678118;
 		static constexpr const double Pi=3.141592658979;
 		static constexpr const unsigned long long int Fixed_Pi=14488038916154245120ULL;
 
