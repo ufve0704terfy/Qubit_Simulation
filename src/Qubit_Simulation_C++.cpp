@@ -583,152 +583,176 @@ class Qubit_Simulation{
 
 //單量子位元邏輯閘
 
-	void Hadamard(const int situation){
+	void HadamardGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++){
 
-			 complex First=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)],
-					 Second=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)];
+			 complex First=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)],
+					 Second=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)];
 
-			 Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]=(First*(Root_half)+(Second*(Root_half)));
-			 Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=(First*(Root_half))-(Second*(Root_half));
+			 Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]=(First*(Root_half)+(Second*(Root_half)));
+			 Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=(First*(Root_half))-(Second*(Root_half));
 
 		}
 
 	}
 
-	void PauliX(const int situation){
+	void XGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
-			std::swap(Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)],
-					  Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++)
+			std::swap(Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)],
+					  Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]);
 
 	}
 
-	void PauliY(const int situation){
+	void YGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++){
 
-			std::swap(Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)],
-					  Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]);
+			std::swap(Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)],
+					  Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]);
 
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]*complex(0LL,-Fixed_Point);
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(0LL,Fixed_Point);
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]*complex(0LL,-Fixed_Point);
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(0LL,Fixed_Point);
 
 		}
 
 	}
 
-	void PauliZ(const int situation){
+	void ZGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*(-Fixed_Point);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++)
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*(-Fixed_Point);
 
 	}
 
-	void PhaseS(const int situation){
+	void SGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(0ULL,Fixed_Point);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++)
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(0ULL,Fixed_Point);
 
 	}
 
-	void PhaseT(const int situation){
+	void SdgGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(Root_half,Root_half);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++)
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(0ULL,-Fixed_Point);
+
+	}
+
+	void TGate(const int qubit){
+
+		if(IsQubitUnoperable(qubit))
+			return ;
+
+		int Qubit_Situation=GetSituation(qubit);
+
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++)
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(Root_half,Root_half);
 
 
 	}
 
-	void PhaseRz(const int situation,const double Angle){
+	void TdgGate(const int qubit){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		double Cos_Angle=cos(Angle*Pi/180/2),
-			   Sin_Angle=sin(Angle*Pi/180/2);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++)
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(Root_half,-Root_half);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
+	}
 
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]*complex(FixedPoint(Cos_Angle),FixedPoint(-Sin_Angle));
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(FixedPoint(Cos_Angle),FixedPoint(Sin_Angle));
+	void RxGate(const int qubit,const double angle){
+
+		if(IsQubitUnoperable(qubit))
+			return ;
+
+		int Qubit_Situation=GetSituation(qubit);
+
+		double Cos_Angle=cos(angle*Pi/180/2),
+			   Sin_Angle=sin(angle*Pi/180/2);
+
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++){
+
+			complex First=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)],
+					Second=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)];
+
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]=First*FixedPoint(Cos_Angle)+Second*complex(0,FixedPoint(-Sin_Angle));
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=First*complex(0,FixedPoint(-Sin_Angle))+Second*FixedPoint(Cos_Angle);
 
 		}
 
 	}
 
-	void PhaseRx(const int situation,const double Angle){
+	void RyGate(const int qubit,const double angle){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		double Cos_Angle=cos(Angle*Pi/180/2),
-			   Sin_Angle=sin(Angle*Pi/180/2);
+		double Cos_Angle=cos(angle*Pi/180/2),
+			   Sin_Angle=sin(angle*Pi/180/2);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++){
 
-			complex First=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)],
-					Second=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)];
+			complex First=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)],
+					Second=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)];
 
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]=First*FixedPoint(Cos_Angle)+Second*complex(0,FixedPoint(-Sin_Angle));
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=First*complex(0,FixedPoint(-Sin_Angle))+Second*FixedPoint(Cos_Angle);
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]=First*FixedPoint(Cos_Angle)+Second*FixedPoint(-Sin_Angle);
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=First*FixedPoint(-Sin_Angle)+Second*FixedPoint(Cos_Angle);
 
 		}
 
 	}
 
-	void PhaseRy(const int situation,const double Angle){
+	void RzGate(const int qubit,const double angle){
 
-		if(IsQubitUnoperable(situation))
+		if(IsQubitUnoperable(qubit))
 			return ;
 
-		int Qubit_Situation=GetSituation(situation);
+		int Qubit_Situation=GetSituation(qubit);
 
-		double Cos_Angle=cos(Angle*Pi/180/2),
-			   Sin_Angle=sin(Angle*Pi/180/2);
+		double Cos_Angle=cos(angle*Pi/180/2),
+			   Sin_Angle=sin(angle*Pi/180/2);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit]->second.size()>>1;count++){
 
-			complex First=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)],
-					Second=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)];
-
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)]=First*FixedPoint(Cos_Angle)+Second*FixedPoint(-Sin_Angle);
-			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=First*FixedPoint(-Sin_Angle)+Second*FixedPoint(Cos_Angle);
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,0ULL)]*complex(FixedPoint(Cos_Angle),FixedPoint(-Sin_Angle));
+			Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[qubit]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(FixedPoint(Cos_Angle),FixedPoint(Sin_Angle));
 
 		}
 
@@ -737,78 +761,96 @@ class Qubit_Simulation{
 
 //雙量子位元邏輯閘
 
-	void CNOT(const int situation1,const int situation2){
+	void CNOTGate(const int controlQubit,const int targetQubit){
 
-		if(IsQubitUnoperable(situation1)||
-		   IsQubitUnoperable(situation2)||
-		   situation1==situation2)
+		if(IsQubitUnoperable(controlQubit)||
+		   IsQubitUnoperable(targetQubit)||
+		   controlQubit==targetQubit)
 			return ;
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
-			CombineEntangledQubitSet(situation1,situation2);
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[targetQubit]->first)
+			CombineEntangledQubitSet(controlQubit,targetQubit);
 
-		int Qubit_Situation1=GetSituation(situation1),
-			Qubit_Situation2=GetSituation(situation2);
+		int Qubit_Situation1=GetSituation(controlQubit),
+			Qubit_Situation2=GetSituation(targetQubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++)
-			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)],Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>2;count++)
+			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)],Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]);
 
 	}
 
-	void CZ(const int situation1,const int situation2){
+	void CZGate(const int controlQubit,const int targetQubit){
 
-		if(IsQubitUnoperable(situation1)||
-		   IsQubitUnoperable(situation2)||
-		   situation1==situation2)
+		if(IsQubitUnoperable(controlQubit)||
+		   IsQubitUnoperable(targetQubit)||
+		   controlQubit==targetQubit)
 			return ;
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
-			CombineEntangledQubitSet(situation1,situation2);
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[targetQubit]->first)
+			CombineEntangledQubitSet(controlQubit,targetQubit);
 
-		int Qubit_Situation1=GetSituation(situation1),
-			Qubit_Situation2=GetSituation(situation2);
+		int Qubit_Situation1=GetSituation(controlQubit),
+			Qubit_Situation2=GetSituation(targetQubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++)
-			Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]*complex(-Fixed_Point);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>2;count++)
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]*complex(-Fixed_Point);
 
 	}
 
-	void SWAP(const int situation1,const int situation2){
+	void SqrtSWAPGate(const int qubit1,const int qubit2){
 
-		if(IsQubitUnoperable(situation1)||
-		   IsQubitUnoperable(situation2)||
-		   situation1==situation2)
+		if(IsQubitUnoperable(qubit1)||
+		   IsQubitUnoperable(qubit2)||
+		   qubit1==qubit2)
 			return ;
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
-			CombineEntangledQubitSet(situation1,situation2);
+		if(Entangled_Qubit_Set[qubit1]->first!=Entangled_Qubit_Set[qubit2]->first)
+			CombineEntangledQubitSet(qubit1,qubit2);
 
-		int Qubit_Situation1=GetSituation(situation1),
-			Qubit_Situation2=GetSituation(situation2);
+		int Qubit_Situation1=GetSituation(qubit1),
+			Qubit_Situation2=GetSituation(qubit2);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++)
-			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++)
+			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
 
 	}
 
-	void iSWAP(const int situation1,const int situation2){
+ 	void SWAPGate(const int qubit1,const int qubit2){
 
-		if(IsQubitUnoperable(situation1)||
-		   IsQubitUnoperable(situation2)||
-		   situation1==situation2)
+		if(IsQubitUnoperable(qubit1)||
+		   IsQubitUnoperable(qubit2)||
+		   qubit1==qubit2)
 			return ;
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
-			CombineEntangledQubitSet(situation1,situation2);
+		if(Entangled_Qubit_Set[qubit1]->first!=Entangled_Qubit_Set[qubit2]->first)
+			CombineEntangledQubitSet(qubit1,qubit2);
 
-		int Qubit_Situation1=GetSituation(situation1),
-			Qubit_Situation2=GetSituation(situation2);
+		int Qubit_Situation1=GetSituation(qubit1),
+			Qubit_Situation2=GetSituation(qubit2);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++){
-			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],
-					  Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
-			Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]=Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]*complex(0,Fixed_Point);
-			Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]*complex(0,Fixed_Point);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++)
+			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
+
+	}
+
+	void ISWAPGate(const int qubit1,const int qubit2){
+
+		if(IsQubitUnoperable(qubit1)||
+		   IsQubitUnoperable(qubit2)||
+		   qubit1==qubit2)
+			return ;
+
+		if(Entangled_Qubit_Set[qubit1]->first!=Entangled_Qubit_Set[qubit2]->first)
+			CombineEntangledQubitSet(qubit1,qubit2);
+
+		int Qubit_Situation1=GetSituation(qubit1),
+			Qubit_Situation2=GetSituation(qubit2);
+
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++){
+			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],
+					  Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]*complex(0,Fixed_Point);
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]*complex(0,Fixed_Point);
 
 		}
 	}
@@ -816,56 +858,56 @@ class Qubit_Simulation{
 
 //三量子量子位元邏輯閘
 
-	void CSWAP(const int situation1,const int situation2,const int situation3){
+	void CSWAPGate(const int controlQubit,const int qubit1,const int qubit2){
 
-		if(IsQubitUnoperable(situation1)||
-		   IsQubitUnoperable(situation2)||
-		   IsQubitUnoperable(situation3)||
-		   situation1==situation2||
-		   situation1==situation3||
-		   situation1==situation3)
+		if(IsQubitUnoperable(controlQubit)||
+		   IsQubitUnoperable(qubit1)||
+		   IsQubitUnoperable(qubit2)||
+		   controlQubit==qubit1||
+		   controlQubit==qubit2||
+		   qubit1==qubit2)
 			return ;
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
-			CombineEntangledQubitSet(situation1,situation2);
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[qubit1]->first)
+			CombineEntangledQubitSet(controlQubit,qubit1);
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation3]->first)
-			CombineEntangledQubitSet(situation1,situation3);
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[qubit2]->first)
+			CombineEntangledQubitSet(controlQubit,qubit2);
 
-		int Qubit_Situation1=GetSituation(situation1),
-			Qubit_Situation2=GetSituation(situation2),
-			Qubit_Situation3=GetSituation(situation3);
+		int Qubit_Situation1=GetSituation(controlQubit),
+			Qubit_Situation2=GetSituation(qubit1),
+			Qubit_Situation3=GetSituation(qubit2);
 
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>3;count++)
-			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-					  Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL,Qubit_Situation3,1LL)]);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++)
+			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL,Qubit_Situation3,1LL)]);
 
 	}
 
-	void CCNOT(const int situation1,const int situation2,const int situation3){
+	void CCNOTGate(const int controlQubit,const int controlQubit2,const int targetQubit){
 
-		if(IsQubitUnoperable(situation1)||
-		   IsQubitUnoperable(situation2)||
-		   IsQubitUnoperable(situation3)||
-		   situation1==situation2||
-		   situation1==situation3||
-		   situation1==situation3)
+		if(IsQubitUnoperable(controlQubit)||
+		   IsQubitUnoperable(controlQubit2)||
+		   IsQubitUnoperable(targetQubit)||
+		   controlQubit==controlQubit2||
+		   controlQubit==targetQubit||
+		   controlQubit2==targetQubit)
 			return ;
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
-			CombineEntangledQubitSet(situation1,situation2);
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[controlQubit2]->first)
+			CombineEntangledQubitSet(controlQubit,controlQubit2);
 
-		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation3]->first)
-			CombineEntangledQubitSet(situation1,situation3);
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[targetQubit]->first)
+			CombineEntangledQubitSet(controlQubit,targetQubit);
 
-		int Qubit_Situation1=GetSituation(situation1),
-			Qubit_Situation2=GetSituation(situation2),
-			Qubit_Situation3=GetSituation(situation3);
+		int Qubit_Situation1=GetSituation(controlQubit),
+			Qubit_Situation2=GetSituation(controlQubit2),
+			Qubit_Situation3=GetSituation(targetQubit);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>3;count++)
-			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-					  Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1LL)]);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++)
+			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1LL)]);
 
 	}
 
@@ -876,10 +918,10 @@ int main() {
 
 	Qubit_Simulation a=Qubit_Simulation(3);
 
-	a.Hadamard(0);
-	a.CNOT(0,1);
+	a.HadamardGate(0);
+	a.CNOTGate(0,1);
 	a.OuputEntangledQubitSet(0);
-	a.Hadamard(0);
+	a.HadamardGate(0);
 	a.OuputEntangledQubitSet(0);
 
 
