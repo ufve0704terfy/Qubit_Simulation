@@ -195,6 +195,7 @@ class Qubit_Simulation{
 	std::unordered_map<int,std::pair<std::vector<int>,std::vector<complex>>> Entangled_Qubit_Set_Pointer;
 	std::unordered_map<int,std::pair<std::vector<int>,std::vector<complex>>*> Entangled_Qubit_Set;
 
+
 	void CombineEntangledQubitSet(int situation1,int situation2){
 
 		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end())
@@ -227,6 +228,7 @@ class Qubit_Simulation{
 			Entangled_Qubit_Set[Second_Qubit_Name_Set[count]]=Entangled_Qubit_Set[situation1];
 
 	}
+
 	constexpr inline unsigned long long BitRemova(unsigned long long num,const unsigned long long situation){
 
 		return (num&((1ULL<<situation)-1ULL))|((num>>(situation+1ULL))<<situation);
@@ -330,6 +332,23 @@ class Qubit_Simulation{
 		return ((num>>situation3)<<(situation3+1ULL))|(add3<<situation3)|(num&((1ULL<<situation3)-1ULL));
 
 	}
+
+	int GetSituation(int situation){
+
+		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
+
+		int Qubit_Situation=-1;
+		for(unsigned long long count=0;count<Qubit_Set.size();count++)
+			if(Qubit_Set[count]==situation)
+				Qubit_Situation=count;
+
+		if(Qubit_Situation==-1)
+			return -1;
+
+		return Qubit_Set.size()-Qubit_Situation-1;
+
+	}
+
 
 	public:
 
@@ -575,17 +594,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
 
@@ -607,17 +616,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
 			std::swap(Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,0ULL)],
@@ -633,17 +632,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++){
 
@@ -665,17 +654,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
 			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*(-Fixed_Point);
@@ -690,17 +669,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
 			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(0ULL,Fixed_Point);
@@ -715,17 +684,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int  Qubit_Situation=-1;
-		for(unsigned long long  count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation]->second.size()>>1;count++)
 			Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]=Entangled_Qubit_Set[situation]->second[BitAdd(count,Qubit_Situation,1ULL)]*complex(Root_half,Root_half);
@@ -741,17 +700,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		double Cos_Angle=cos(Angle*Pi/180/2),
 			   Sin_Angle=sin(Angle*Pi/180/2);
@@ -775,15 +724,7 @@ class Qubit_Simulation{
 
 		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
 
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		double Cos_Angle=cos(Angle*Pi/180/2),
 			   Sin_Angle=sin(Angle*Pi/180/2);
@@ -808,17 +749,7 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set.find(situation)==Entangled_Qubit_Set.end())
 			return ;
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation]->first;
-
-		int Qubit_Situation=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation)
-				Qubit_Situation=count;
-
-		if(Qubit_Situation==-1)
-			return ;
-
-		Qubit_Situation=Qubit_Set.size()-Qubit_Situation-1;
+		int Qubit_Situation=GetSituation(situation);
 
 		double Cos_Angle=cos(Angle*Pi/180/2),
 			   Sin_Angle=sin(Angle*Pi/180/2);
@@ -848,20 +779,8 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
 			CombineEntangledQubitSet(situation1,situation2);
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation1]->first;
-
-		int Qubit_Situation1=-1,Qubit_Situation2=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation1)
-				Qubit_Situation1=count;
-			else if(Qubit_Set[count]==situation2)
-				Qubit_Situation2=count;
-
-		if(Qubit_Situation1==-1||Qubit_Situation2==-1)
-			return ;
-
-		Qubit_Situation1=Qubit_Set.size()-Qubit_Situation1-1;
-		Qubit_Situation2=Qubit_Set.size()-Qubit_Situation2-1;
+		int Qubit_Situation1=GetSituation(situation1),
+			Qubit_Situation2=GetSituation(situation2);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++)
 			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)],Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]);
@@ -879,20 +798,8 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
 			CombineEntangledQubitSet(situation1,situation2);
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation1]->first;
-
-		int Qubit_Situation1=-1,Qubit_Situation2=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation1)
-				Qubit_Situation1=count;
-			else if(Qubit_Set[count]==situation2)
-				Qubit_Situation2=count;
-
-		if(Qubit_Situation1==-1||Qubit_Situation2==-1)
-			return ;
-
-		Qubit_Situation1=Qubit_Set.size()-Qubit_Situation1-1;
-		Qubit_Situation2=Qubit_Set.size()-Qubit_Situation2-1;
+		int Qubit_Situation1=GetSituation(situation1),
+			Qubit_Situation2=GetSituation(situation2);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++)
 			Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]*complex(-Fixed_Point);
@@ -910,20 +817,8 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
 			CombineEntangledQubitSet(situation1,situation2);
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation1]->first;
-
-		int Qubit_Situation1=-1,Qubit_Situation2=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation1)
-				Qubit_Situation1=count;
-			else if(Qubit_Set[count]==situation2)
-				Qubit_Situation2=count;
-
-		if(Qubit_Situation1==-1||Qubit_Situation2==-1)
-			return ;
-
-		Qubit_Situation1=Qubit_Set.size()-Qubit_Situation1-1;
-		Qubit_Situation2=Qubit_Set.size()-Qubit_Situation2-1;
+		int Qubit_Situation1=GetSituation(situation1),
+			Qubit_Situation2=GetSituation(situation2);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++)
 			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
@@ -935,26 +830,16 @@ class Qubit_Simulation{
 		if(IsObservered(situation1)||IsObservered(situation2))
 			return ;
 
-		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||situation1==situation2)
+		if(Entangled_Qubit_Set.find(situation1)==Entangled_Qubit_Set.end()||
+		   Entangled_Qubit_Set.find(situation2)==Entangled_Qubit_Set.end()||
+		   situation1==situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
 			CombineEntangledQubitSet(situation1,situation2);
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation1]->first;
-
-		int Qubit_Situation1=-1,Qubit_Situation2=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation1)
-				Qubit_Situation1=count;
-			else if(Qubit_Set[count]==situation2)
-				Qubit_Situation2=count;
-
-		if(Qubit_Situation1==-1||Qubit_Situation2==-1)
-			return ;
-
-		Qubit_Situation1=Qubit_Set.size()-Qubit_Situation1-1;
-		Qubit_Situation2=Qubit_Set.size()-Qubit_Situation2-1;
+		int Qubit_Situation1=GetSituation(situation1),
+			Qubit_Situation2=GetSituation(situation2);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>2;count++){
 			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],
@@ -986,29 +871,14 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation3]->first)
 			CombineEntangledQubitSet(situation1,situation3);
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation1]->first;
-
-		int Qubit_Situation1=-1,Qubit_Situation2=-1,Qubit_Situation3=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation1)
-				Qubit_Situation1=count;
-			else if(Qubit_Set[count]==situation2)
-				Qubit_Situation2=count;
-			else if(Qubit_Set[count]==situation3)
-				Qubit_Situation3=count;
-
-		if(Qubit_Situation1==-1||Qubit_Situation2==-1||Qubit_Situation3==-1)
-			return ;
-
-		Qubit_Situation1=Qubit_Set.size()-Qubit_Situation1-1;
-		Qubit_Situation2=Qubit_Set.size()-Qubit_Situation2-1;
-		Qubit_Situation3=Qubit_Set.size()-Qubit_Situation3-1;
+		int Qubit_Situation1=GetSituation(situation1),
+			Qubit_Situation2=GetSituation(situation2),
+			Qubit_Situation3=GetSituation(situation3);
 
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>3;count++)
 			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
 					  Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL,Qubit_Situation3,1LL)]);
-
 
 	}
 
@@ -1031,29 +901,13 @@ class Qubit_Simulation{
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation3]->first)
 			CombineEntangledQubitSet(situation1,situation3);
 
-		std::vector<int> Qubit_Set=Entangled_Qubit_Set[situation1]->first;
-
-		int Qubit_Situation1=-1,Qubit_Situation2=-1,Qubit_Situation3=-1;
-		for(unsigned long long count=0;count<(Qubit_Set.size());count++)
-			if(Qubit_Set[count]==situation1)
-				Qubit_Situation1=count;
-			else if(Qubit_Set[count]==situation2)
-				Qubit_Situation2=count;
-			else if(Qubit_Set[count]==situation3)
-				Qubit_Situation3=count;
-
-		if(Qubit_Situation1==-1||Qubit_Situation2==-1||Qubit_Situation3==-1)
-			return ;
-
-		Qubit_Situation1=Qubit_Set.size()-Qubit_Situation1-1;
-		Qubit_Situation2=Qubit_Set.size()-Qubit_Situation2-1;
-		Qubit_Situation3=Qubit_Set.size()-Qubit_Situation3-1;
-
+		int Qubit_Situation1=GetSituation(situation1),
+			Qubit_Situation2=GetSituation(situation2),
+			Qubit_Situation3=GetSituation(situation3);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[situation1]->second.size()>>3;count++)
 			std::swap(Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
 					  Entangled_Qubit_Set[situation1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1LL)]);
-
 
 	}
 
