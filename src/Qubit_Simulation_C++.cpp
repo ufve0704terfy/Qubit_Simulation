@@ -392,6 +392,7 @@ class Qubit_Simulation{
 		std::vector<complex> Output_Qubit=Entangled_Qubit_Set[situation]->second;
 		for(unsigned long long count=0;count<Output_Qubit.size();count++)
 			std::cout<<FixedPointToDouble(Output_Qubit[count].Real)<<' '<<FixedPointToDouble(Output_Qubit[count].Imaginary)<<std::endl;
+			//std::cout<<Output_Qubit[count].Real<<' '<<Output_Qubit[count].Imaginary<<std::endl;
 
 	}
 
@@ -758,6 +759,14 @@ class Qubit_Simulation{
 
 	}
 
+	void UGate(const int qubit, const double theta, const double phi, const double lambda){
+
+		RzGate(qubit,theta);
+		RyGate(qubit,phi);
+		RzGate(qubit,lambda);
+
+	}
+
 
 //雙量子位元邏輯閘
 
@@ -810,9 +819,15 @@ class Qubit_Simulation{
 		int Qubit_Situation1=GetSituation(qubit1),
 			Qubit_Situation2=GetSituation(qubit2);
 
-		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++)
-			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++){
 
+			complex First=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)],
+					Second=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)];
+
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]=First*complex(Fixed_Point>>1,Fixed_Point>>1)+Second*complex(Fixed_Point>>1,-(Fixed_Point>>1));
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]=First*complex(Fixed_Point>>1,-(Fixed_Point>>1))+Second*complex(Fixed_Point>>1,Fixed_Point>>1);
+
+		}
 	}
 
  	void SWAPGate(const int qubit1,const int qubit2){
@@ -881,7 +896,7 @@ class Qubit_Simulation{
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++)
 			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL,Qubit_Situation3,1LL)]);
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL,Qubit_Situation3,1ULL)]);
 
 	}
 
@@ -907,8 +922,41 @@ class Qubit_Simulation{
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++)
 			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1LL)]);
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1ULL)]);
 
+	}
+
+	void DeutschGate(const int controlQubit,const int controlQubit2,const int targetQubit,const double angle){
+
+		if(IsQubitUnoperable(controlQubit)||
+		   IsQubitUnoperable(controlQubit2)||
+		   IsQubitUnoperable(targetQubit)||
+		   controlQubit==controlQubit2||
+		   controlQubit==targetQubit||
+		   controlQubit2==targetQubit)
+			return ;
+
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[controlQubit2]->first)
+			CombineEntangledQubitSet(controlQubit,controlQubit2);
+
+		if(Entangled_Qubit_Set[controlQubit]->first!=Entangled_Qubit_Set[targetQubit]->first)
+			CombineEntangledQubitSet(controlQubit,targetQubit);
+
+		int Qubit_Situation1=GetSituation(controlQubit),
+			Qubit_Situation2=GetSituation(controlQubit2),
+			Qubit_Situation3=GetSituation(targetQubit);
+
+		double Cos_Angle=cos(angle*Pi/180/2),
+			   Sin_Angle=sin(angle*Pi/180/2);
+
+		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++){
+
+			complex First=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
+					Second=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1ULL)];
+
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)]=First*complex(0,Cos_Angle)+Second*Sin_Angle;
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1ULL)]=First*Sin_Angle+Second*complex(0,-Cos_Angle);
+		}
 	}
 
 
@@ -920,8 +968,6 @@ int main() {
 
 	a.HadamardGate(0);
 	a.CNOTGate(0,1);
-	a.OuputEntangledQubitSet(0);
-	a.HadamardGate(0);
 	a.OuputEntangledQubitSet(0);
 
 
