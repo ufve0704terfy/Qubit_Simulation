@@ -580,6 +580,9 @@ class Qubit_Simulation{
 
 	}
 
+
+//單量子位元邏輯閘
+
 	void Hadamard(const int situation){
 
 		if(IsQubitUnoperable(situation))
@@ -732,12 +735,13 @@ class Qubit_Simulation{
 	}
 
 
+//雙量子位元邏輯閘
 
 	void CNOT(const int situation1,const int situation2){
 
 		if(IsQubitUnoperable(situation1)||
 		   IsQubitUnoperable(situation2)||
-		   situation1!=situation2)
+		   situation1==situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -755,7 +759,7 @@ class Qubit_Simulation{
 
 		if(IsQubitUnoperable(situation1)||
 		   IsQubitUnoperable(situation2)||
-		   situation1!=situation2)
+		   situation1==situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -773,7 +777,7 @@ class Qubit_Simulation{
 
 		if(IsQubitUnoperable(situation1)||
 		   IsQubitUnoperable(situation2)||
-		   situation1!=situation2)
+		   situation1==situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -791,7 +795,7 @@ class Qubit_Simulation{
 
 		if(IsQubitUnoperable(situation1)||
 		   IsQubitUnoperable(situation2)||
-		   situation1!=situation2)
+		   situation1==situation2)
 			return ;
 
 		if(Entangled_Qubit_Set[situation1]->first!=Entangled_Qubit_Set[situation2]->first)
@@ -810,6 +814,7 @@ class Qubit_Simulation{
 	}
 
 
+//三量子量子位元邏輯閘
 
 	void CSWAP(const int situation1,const int situation2,const int situation3){
 
@@ -871,12 +876,12 @@ int main() {
 
 	Qubit_Simulation a=Qubit_Simulation(3);
 
-
 	a.Hadamard(0);
 	a.CNOT(0,1);
-	a.Hadamard(0);
-
 	a.OuputEntangledQubitSet(0);
+	a.Hadamard(0);
+	a.OuputEntangledQubitSet(0);
+
 
 	std::cout<<std::endl;
 	std::cout<<a.ObserverQubit(0)<<std::endl;
