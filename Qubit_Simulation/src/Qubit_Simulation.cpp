@@ -1068,6 +1068,7 @@ class Qubit_Simulation{
 
 
 };
+
 int main() {
 
 	Qubit_Simulation a=Qubit_Simulation(3);
