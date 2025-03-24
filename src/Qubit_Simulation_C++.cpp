@@ -547,67 +547,13 @@ class Qubit_Simulation{
 		return (num&((1ULL<<situation3)-1ULL))|((num>>(situation3+1ULL))<<situation3);
 
 	}
-	constexpr inline unsigned long long BitAdd(unsigned long long num,const unsigned long long situation,const unsigned long long add){
+
+	constexpr inline unsigned long long BitAdd(unsigned long long num,const int situation,bool add){
 
 		return ((num>>situation)<<(situation+1ULL))|(add<<situation)|(num&((1ULL<<situation)-1ULL));
 
 	}
-	constexpr inline unsigned long long BitAdd(unsigned long long num,unsigned long long situation1,unsigned long long add1,unsigned long long situation2,unsigned long long add2){
-
-		if(situation1>situation2){
-			situation1=situation1^situation2;
-			situation2=situation1^situation2;
-			situation1=situation1^situation2;
-
-			add1=add1^add2;
-			add2=add1^add2;
-			add1=add1^add2;
-		}
-
-		num=((num>>situation1)<<(situation1+1ULL))|(add1<<situation1)|(num&((1ULL<<situation1)-1ULL));
-
-		return ((num>>situation2)<<(situation2+1ULL))|(add2<<situation2)|(num&((1ULL<<situation2)-1ULL));
-
-	}
-	constexpr inline unsigned long long BitAdd(unsigned long long num,unsigned long long situation1,unsigned long long add1,unsigned long long situation2,unsigned long long add2,unsigned long long situation3,unsigned long long add3){
-
-		if(situation1>situation2){
-			situation1=situation1^situation2;
-			situation2=situation1^situation2;
-			situation1=situation1^situation2;
-
-			add1=add1^add2;
-			add2=add1^add2;
-			add1=add1^add2;
-		}
-		if(situation1>situation3){
-			situation1=situation1^situation3;
-			situation3=situation1^situation3;
-			situation1=situation1^situation3;
-
-			add1=add1^add3;
-			add3=add1^add3;
-			add1=add1^add3;
-		}
-
-		num=((num>>situation1)<<(situation1+1ULL))|(add1<<situation1)|(num&((1ULL<<situation1)-1ULL));
-
-		if(situation2>situation3){
-			situation2=situation2^situation3;
-			situation3=situation2^situation3;
-			situation2=situation2^situation3;
-
-			add2=add2^add3;
-			add3=add2^add3;
-			add2=add2^add3;
-		}
-
-		num=((num>>situation2)<<(situation2+1ULL))|(add2<<situation2)|(num&((1ULL<<situation2)-1ULL));
-
-		return ((num>>situation3)<<(situation3+1ULL))|(add3<<situation3)|(num&((1ULL<<situation3)-1ULL));
-
-	}
-	inline unsigned long long BitAdd(unsigned long long num,std::vector<std::pair<unsigned long long,bool>> Control){
+	inline unsigned long long BitAdd(unsigned long long num,std::vector<std::pair<int,bool>> Control){
 
 		std::sort(Control.begin(),Control.end());
 
@@ -1078,7 +1024,8 @@ class Qubit_Simulation{
 			Qubit_Situation2=GetSituation(targetQubit);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>2;count++)
-			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)],Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]);
+			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1}})],
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})]);
 
 	}
 
@@ -1096,7 +1043,8 @@ class Qubit_Simulation{
 			Qubit_Situation2=GetSituation(targetQubit);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>2;count++)
-			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL)]*FixedComplex(-Fixed_Point);
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1}})]=
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1}})]*FixedComplex(-Fixed_Point);
 
 	}
 
@@ -1115,11 +1063,11 @@ class Qubit_Simulation{
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++){
 
-			FixedComplex First=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)],
-						 Second=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)];
+			FixedComplex First=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,0},{Qubit_Situation2,1}})],
+						 Second=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})];
 
-			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]=First*FixedComplex(Fixed_Point>>1,Fixed_Point>>1)+Second*FixedComplex(Fixed_Point>>1,-(Fixed_Point>>1));
-			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]=First*FixedComplex(Fixed_Point>>1,-(Fixed_Point>>1))+Second*FixedComplex(Fixed_Point>>1,Fixed_Point>>1);
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,0},{Qubit_Situation2,1}})]=First*FixedComplex(Fixed_Point>>1,Fixed_Point>>1)+Second*FixedComplex(Fixed_Point>>1,-(Fixed_Point>>1));
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})]=First*FixedComplex(Fixed_Point>>1,-(Fixed_Point>>1))+Second*FixedComplex(Fixed_Point>>1,Fixed_Point>>1);
 
 		}
 	}
@@ -1138,7 +1086,8 @@ class Qubit_Simulation{
 			Qubit_Situation2=GetSituation(qubit2);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++)
-			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
+			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})],
+					  Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,0},{Qubit_Situation2,1}})]);
 
 	}
 
@@ -1156,10 +1105,12 @@ class Qubit_Simulation{
 			Qubit_Situation2=GetSituation(qubit2);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[qubit1]->second.size()>>2;count++){
-			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)],
-					  Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]);
-			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL)]*FixedComplex(0,Fixed_Point);
-			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]=Entangled_Qubit_Set[qubit1]->second[BitAdd(count,Qubit_Situation1,0ULL,Qubit_Situation2,1ULL)]*FixedComplex(0,Fixed_Point);
+			std::swap(Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})],
+					  Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,0},{Qubit_Situation2,1}})]);
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})]=
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0}})]*FixedComplex(0,Fixed_Point);
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,0},{Qubit_Situation2,1}})]=
+			Entangled_Qubit_Set[qubit1]->second[BitAdd(count,{{Qubit_Situation1,0},{Qubit_Situation2,1}})]*FixedComplex(0,Fixed_Point);
 
 		}
 	}
@@ -1189,8 +1140,8 @@ class Qubit_Simulation{
 
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++)
-			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,0ULL,Qubit_Situation3,1ULL)]);
+			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,0}})],
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,0},{Qubit_Situation3,1}})]);
 
 	}
 
@@ -1215,8 +1166,8 @@ class Qubit_Simulation{
 			Qubit_Situation3=GetSituation(targetQubit);
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++)
-			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1ULL)]);
+			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,0}})],
+					  Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,1}})]);
 
 	}
 
@@ -1245,11 +1196,11 @@ class Qubit_Simulation{
 
 		for(unsigned long long count=0;count<Entangled_Qubit_Set[controlQubit]->second.size()>>3;count++){
 
-			FixedComplex First=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)],
-						 Second=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1ULL)];
+			FixedComplex First=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,0}})],
+						 Second=Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,1}})];
 
-			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,0ULL)]=First*FixedComplex(0,Cos_Angle)+Second*Sin_Angle;
-			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,Qubit_Situation1,1ULL,Qubit_Situation2,1ULL,Qubit_Situation3,1ULL)]=First*Sin_Angle+Second*FixedComplex(0,-Cos_Angle);
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,0}})]=First*FixedComplex(0,Cos_Angle)+Second*Sin_Angle;
+			Entangled_Qubit_Set[controlQubit]->second[BitAdd(count,{{Qubit_Situation1,1},{Qubit_Situation2,1},{Qubit_Situation3,1}})]=First*Sin_Angle+Second*FixedComplex(0,-Cos_Angle);
 		}
 	}
 
@@ -1263,8 +1214,9 @@ int main() {
 	a.HadamardGate(0);
 	a.CNOTGate(0,1);
 	a.OuputEntangledQubitSet(0);
+	a.HadamardGate(1);
 
-
+	a.OuputEntangledQubitSet(0);
 	std::cout<<std::endl;
 	std::cout<<a.ObserverQubit(0)<<std::endl;
 	std::cout<<a.ObserverQubit(1)<<std::endl;
