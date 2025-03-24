@@ -236,73 +236,145 @@ class Qubit_Simulation{
 
 	};
 
-	class Matrix{
+	struct Matrix{
 
-		bool IsMatrix(const std::vector<std::vector<Complex>> &Matrix){
+	public:
 
-			if(Matrix.size()==0)
+		std::vector<std::vector<Complex>> data;
+
+		Matrix():data({{}}){};
+		Matrix(const std::vector<double> &A){
+
+			std::vector<std::vector<Complex>> Result(1,std::vector<Complex>(A.size()));
+
+			for(int y=0;y<int(A.size());y++)
+				Result[0][y]=Complex(A[y]);
+
+			data=Result;
+
+		};
+		Matrix(const std::vector<Complex> &A):data({A}){};
+		Matrix(const std::vector<std::vector<double>> &A){
+
+			if(A.size()==0)
+				data={{}};
+
+			std::vector<std::vector<Complex>> Result(A.size(),std::vector<Complex>(A[0].size()));
+
+			for(int x=0;x<int(A.size());x++)
+				for(int y=0;y<int(A[x].size());y++)
+					Result[x][y]=Complex(A[x][y]);
+
+			data=Result;
+
+		};
+		Matrix(const std::vector<std::vector<Complex>> &A):data(A){};
+
+
+		std::vector<Complex>& operator[](const int x){return data[x];};
+		const std::vector<Complex>& operator[](const int x)const{return data[x];};
+
+		bool IsMatrix() const{
+
+			if(data.size()==0)
 				return 0;
 
-			int Column=Matrix[0].size();
-			for(int x=0;x<int(Matrix.size());x++)
-				if(int(Matrix[x].size())!=Column)
+			int Column=data[0].size();
+			for(int x=0;x<int(data.size());x++)
+				if(int(data[x].size())!=Column)
 					return 0;
 
 			return 1;
 
 		}
 
-		bool IsSquareMatrix(const std::vector<std::vector<Complex>> &Matrix){
 
-			if(IsMatrix(Matrix)==0)
-				return 0;
+		Matrix operator+(const Matrix& other)const& noexcept{
 
-			return (Matrix.size()==Matrix[0].size());
-
-		}
-
-
-
-		std::vector<std::vector<Complex>> AdditionMatrix(const std::vector<std::vector<Complex>> &Matrix1,const std::vector<std::vector<Complex>> &Matrix2){
-
-			if(!IsMatrix(Matrix1)||!IsMatrix(Matrix2))
+			if(!IsMatrix()||!other.IsMatrix())
 				return {};
 
-			if((Matrix1.size()!=Matrix2.size())||(Matrix1.size()==0))
+			if((data.size()!=other.data.size())||(data.size()==0))
 				return {};
 
-			if(Matrix1[0].size()!=Matrix2[0].size())
-				return {};
+			if(data[0].size()!=other.data[0].size())
+					return {};
 
-			std::vector<std::vector<Complex>> Result(Matrix1.size(),std::vector<Complex>(Matrix1[0].size()));
+			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(other.data[0].size()));
 			for(int x=0;x<int(Result.size());x++)
 				for(int y=0;y<int(Result[x].size());y++)
-					Result[x][y]=Matrix1[x][y]+Matrix2[x][y];
+					Result[x][y]=data[x][y]+other.data[x][y];
 
 			return Result;
 
 		}
-		std::vector<std::vector<Complex>> MinusMatrix(const std::vector<std::vector<Complex>> &Matrix1,const std::vector<std::vector<Complex>> &Matrix2){
+		Matrix operator-(const Matrix& other)const& noexcept{
 
-			if(!IsMatrix(Matrix1)||!IsMatrix(Matrix2))
+			if(!IsMatrix()||!other.IsMatrix())
 				return {};
 
-			if((Matrix1.size()!=Matrix2.size())||(Matrix1.size()==0))
+			if((data.size()!=other.data.size())||(data.size()==0))
 				return {};
 
-			if(Matrix1[0].size()!=Matrix2[0].size())
-				return {};
+			if(data[0].size()!=other.data[0].size())
+					return {};
 
-			std::vector<std::vector<Complex>> Result(Matrix1.size(),std::vector<Complex>(Matrix1[0].size()));
+			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(other.data[0].size()));
 			for(int x=0;x<int(Result.size());x++)
 				for(int y=0;y<int(Result[x].size());y++)
-					Result[x][y]=Matrix1[x][y]-Matrix2[x][y];
+					Result[x][y]=data[x][y]-other.data[x][y];
 
 			return Result;
 
 		}
 
+		/*std::vector<std::vector<Complex>> ScalarMultiplicationMatrix(const double Scalar,const std::vector<std::vector<Complex>> &Matrix){
 
+			if(!IsMatrix(Matrix))
+				return {};
+
+			std::vector<std::vector<Complex>> Result(Matrix.size(),std::vector<Complex>(Matrix[0].size()));
+			for(int x=0;x<int(Matrix.size());x++)
+				for(int y=0;y<int(Matrix[x].size());y++)
+					Result[x][y]=Scalar*Matrix[x][y];
+
+			return Result;
+
+		}
+		std::vector<std::vector<Complex>> ScalarMultiplicationMatrix(const Complex &Scalar,const std::vector<std::vector<Complex>> &Matrix){
+
+			if(!IsMatrix(Matrix))
+				return {};
+
+			std::vector<std::vector<Complex>> Result(Matrix.size(),std::vector<Complex>(Matrix[0].size()));
+			for(int x=0;x<int(Matrix.size());x++)
+				for(int y=0;y<int(Matrix[x].size());y++)
+					Result[x][y]=Scalar*Matrix[x][y];
+
+			return Result;
+
+		}
+
+		std::vector<std::vector<Complex>> MatrixMultiplication(const std::vector<std::vector<Complex>> &LeftMatrix,const std::vector<std::vector<Complex>>&RightMatrix){
+
+			if(!IsMatrix(LeftMatrix)||!IsMatrix(RightMatrix))
+				return {};
+
+			std::vector<std::vector<Complex>> Result(LeftMatrix.size(),std::vector<Complex>(RightMatrix[0].size()));
+			for(int Leftx=0;Leftx<int(LeftMatrix.size());Leftx++)
+				for(int Righty=0;Righty<int(RightMatrix[0].size());Righty++){
+
+					Complex sum=Complex(0);
+					for(int count=0;count<int(LeftMatrix[0].size());count++)
+						sum=sum+(LeftMatrix[Leftx][count]*RightMatrix[count][Righty]);
+
+					Result[Leftx][Righty]=sum;
+
+				}
+
+			return Result;
+
+		}*/
 
 
 	};
