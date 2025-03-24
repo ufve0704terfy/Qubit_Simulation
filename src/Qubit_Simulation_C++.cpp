@@ -26,25 +26,6 @@ class Qubit_Simulation{
 
 	}
 
-	static long long int NewtonSqrt(__int128_t input){
-
-		if(input==0)
-			return 0;
-
-		__int128_t Result=input;
-		__int128_t x=(Result+1)/2;
-
-		while(x<Result){
-
-			Result=x;
-			x=(Result+input/Result)/2;
-
-		}
-
-		return static_cast<long long int>(Result);
-
-	}
-
 	static double FixedPointToDouble(const long long int input){
 
 		double result=1.0*input/Fixed_Point;
@@ -441,18 +422,47 @@ class Qubit_Simulation{
 
 	};
 
-	long long int AbsoluteValue(FixedComplex C){
+	private:
 
-		__int128_t Result=((__int128_t)C.Real*C.Real+(__int128_t)C.Imaginary*C.Imaginary);
+	class QMath{
 
-		return NewtonSqrt(Result);
+	public:
 
-	}
-	double AbsoluteValue(Complex C){
+		static inline long long int AbsoluteValue(const FixedComplex C){
 
-		return sqrt((C.Real*C.Real)+(C.Imaginary*C.Imaginary));
+			__int128_t Result=((__int128_t)C.Real*C.Real+(__int128_t)C.Imaginary*C.Imaginary);
 
-	}
+			return NewtonSqrt(Result);
+
+		}
+		static inline double AbsoluteValue(const Complex C){
+
+			return sqrt((C.Real*C.Real)+(C.Imaginary*C.Imaginary));
+
+		}
+
+		static inline long long int NewtonSqrt(const __int128_t input){
+
+			if(input==0)
+				return 0;
+
+			__int128_t Result=input;
+			__int128_t x=(Result+1)/2;
+
+			while(x<Result){
+
+				Result=x;
+				x=(Result+input/Result)/2;
+
+			}
+
+			return static_cast<long long int>(Result);
+
+		}
+
+
+
+	};
 
 	private:
 
@@ -460,7 +470,6 @@ class Qubit_Simulation{
 	std::vector<std::pair<bool,int>> Qubit_Set_Observation;
 	std::unordered_map<int,std::pair<std::vector<int>,std::vector<FixedComplex>>> Entangled_Qubit_Set_Pointer;
 	std::unordered_map<int,std::pair<std::vector<int>,std::vector<FixedComplex>>*> Entangled_Qubit_Set;
-
 
 	void CombineEntangledQubitSet(int situation1,int situation2){
 
@@ -598,6 +607,16 @@ class Qubit_Simulation{
 		return ((num>>situation3)<<(situation3+1ULL))|(add3<<situation3)|(num&((1ULL<<situation3)-1ULL));
 
 	}
+	inline unsigned long long BitAdd(unsigned long long num,std::vector<std::pair<unsigned long long,bool>> Control){
+
+		std::sort(Control.begin(),Control.end());
+
+		for(int count=0;count<int(Control.size());count++)
+			num=BitAdd(num,Control[count].first,Control[count].second);
+
+		return num;
+
+	}
 
 	int GetSituation(const int situation){
 
@@ -700,7 +719,7 @@ class Qubit_Simulation{
 
 		for(unsigned long long int count=0;count<(Qubit_Set_Value.size()>>1)-(Qubit_Set_Value.size()==2);count++)
 			if(Qubit_Set_Value[BitAdd(count,Qubit_Situation,State)].Real!=0||Qubit_Set_Value[BitAdd(count,Qubit_Situation,State)].Imaginary!=0)
-				New_Qubit_Set_Value[count]=Qubit_Set_Value[BitAdd(count,Qubit_Situation,State)]/NewtonSqrt((__int128_t)Probability<<Fixed_shift);
+				New_Qubit_Set_Value[count]=Qubit_Set_Value[BitAdd(count,Qubit_Situation,State)]/QMath::NewtonSqrt((__int128_t)Probability<<Fixed_shift);
 
 		Entangled_Qubit_Set[situation]->second=New_Qubit_Set_Value;
 
@@ -730,14 +749,14 @@ class Qubit_Simulation{
 		for(unsigned long long int count=0;count<Qubit_Set_Value.size()>>1;count++){
 
 			if(Qubit_Set_Value[BitAdd(count,Qubit_Situation,0ULL)].Real!=0||Qubit_Set_Value[BitAdd(count,Qubit_Situation,0ULL)].Imaginary!=0){
-				__int128_t Caculate=AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Situation,0ULL)]);
+				__int128_t Caculate=static_cast<__int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Situation,0ULL)]));
 				Caculate*=Caculate;
 				Caculate>>=Fixed_shift;
 				Probability0+=Caculate;
 			}
 
 			if(Qubit_Set_Value[BitAdd(count,Qubit_Situation,1ULL)].Real!=0||Qubit_Set_Value[BitAdd(count,Qubit_Situation,1ULL)].Imaginary!=0){
-				__int128_t Caculate=AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Situation,1ULL)]);
+				__int128_t Caculate=static_cast<__int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Situation,1ULL)]));
 				Caculate*=Caculate;
 				Caculate>>=Fixed_shift;
 				Probability1+=Caculate;
@@ -759,14 +778,14 @@ class Qubit_Simulation{
 			for(unsigned long long int count=0;count<Qubit_Set_Value.size()>>1;count++){
 
 				if(Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,0ULL)].Real!=0||Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,0ULL)].Imaginary!=0){
-					__int128_t Caculate=AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,0ULL)]);
+					__int128_t Caculate=static_cast<__int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,0ULL)]));
 					Caculate*=Caculate;
 					Caculate>>=Fixed_shift;
 					Probability0+=Caculate;
 				}
 
 				if(Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,1ULL)].Real!=0||Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,1ULL)].Imaginary!=0){
-					__int128_t Caculate=AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,1ULL)]);
+					__int128_t Caculate=static_cast<__int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count,Qubit_Set.size()-setting-1,1ULL)]));
 					Caculate*=Caculate;
 					Caculate>>=Fixed_shift;
 					Probability1+=Caculate;
