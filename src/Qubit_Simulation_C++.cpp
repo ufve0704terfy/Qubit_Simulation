@@ -13,6 +13,7 @@ class Qubit_Simulation{
 
 	public:
 
+	static constexpr const double Double_Epsilon=1e-9;
 	static constexpr const long long int Fixed_Point=(1LL<<62);
 	static constexpr const int Fixed_shift=62;
 	static constexpr const double Root_half=0.70710678118;
@@ -232,6 +233,77 @@ class Qubit_Simulation{
 			return Complex((Real*other.Real+Imaginary*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary),
 						   (Imaginary*other.Real-Real*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary));
 		}
+
+	};
+
+	class Matrix{
+
+		bool IsMatrix(const std::vector<std::vector<Complex>> &Matrix){
+
+			if(Matrix.size()==0)
+				return 0;
+
+			int Column=Matrix[0].size();
+			for(int x=0;x<int(Matrix.size());x++)
+				if(int(Matrix[x].size())!=Column)
+					return 0;
+
+			return 1;
+
+		}
+
+		bool IsSquareMatrix(const std::vector<std::vector<Complex>> &Matrix){
+
+			if(IsMatrix(Matrix)==0)
+				return 0;
+
+			return (Matrix.size()==Matrix[0].size());
+
+		}
+
+
+
+		std::vector<std::vector<Complex>> AdditionMatrix(const std::vector<std::vector<Complex>> &Matrix1,const std::vector<std::vector<Complex>> &Matrix2){
+
+			if(!IsMatrix(Matrix1)||!IsMatrix(Matrix2))
+				return {};
+
+			if((Matrix1.size()!=Matrix2.size())||(Matrix1.size()==0))
+				return {};
+
+			if(Matrix1[0].size()!=Matrix2[0].size())
+				return {};
+
+			std::vector<std::vector<Complex>> Result(Matrix1.size(),std::vector<Complex>(Matrix1[0].size()));
+			for(int x=0;x<int(Result.size());x++)
+				for(int y=0;y<int(Result[x].size());y++)
+					Result[x][y]=Matrix1[x][y]+Matrix2[x][y];
+
+			return Result;
+
+		}
+		std::vector<std::vector<Complex>> MinusMatrix(const std::vector<std::vector<Complex>> &Matrix1,const std::vector<std::vector<Complex>> &Matrix2){
+
+			if(!IsMatrix(Matrix1)||!IsMatrix(Matrix2))
+				return {};
+
+			if((Matrix1.size()!=Matrix2.size())||(Matrix1.size()==0))
+				return {};
+
+			if(Matrix1[0].size()!=Matrix2[0].size())
+				return {};
+
+			std::vector<std::vector<Complex>> Result(Matrix1.size(),std::vector<Complex>(Matrix1[0].size()));
+			for(int x=0;x<int(Result.size());x++)
+				for(int y=0;y<int(Result[x].size());y++)
+					Result[x][y]=Matrix1[x][y]-Matrix2[x][y];
+
+			return Result;
+
+		}
+
+
+
 
 	};
 
