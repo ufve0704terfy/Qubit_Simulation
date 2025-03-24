@@ -13,48 +13,46 @@ class Qubit_Simulation{
 
 	public:
 
-		static constexpr const long long int Fixed_Point=(1LL<<62);
-		static constexpr const int Fixed_shift=62;
-		static constexpr const double Root_half=0.70710678118;
-		static constexpr const double Pi=3.141592658979;
-		static constexpr const unsigned long long int Fixed_Pi=14488038916154245120ULL;
+	static constexpr const long long int Fixed_Point=(1LL<<62);
+	static constexpr const int Fixed_shift=62;
+	static constexpr const double Root_half=0.70710678118;
+	static constexpr const double Pi=3.141592658979;
+	static constexpr const unsigned long long int Fixed_Pi=14488038916154245120ULL;
 
-		static long long int FixedPoint(const double input){
+	static long long int FixedPoint(const double input){
 
-			return static_cast<long long>(input*Fixed_Point);
+		return static_cast<long long>(input*Fixed_Point);
 
-		}
+	}
 
-		static long long int NewtonSqrt(__int128_t input){
+	static long long int NewtonSqrt(__int128_t input){
 
-			if(input==0)
-				return 0;
+		if(input==0)
+			return 0;
 
-			__int128_t Result=input;
-			__int128_t x=(Result+1)/2;
+		__int128_t Result=input;
+		__int128_t x=(Result+1)/2;
 
-			while(x<Result){
+		while(x<Result){
 
-				Result=x;
-				x=(Result+input/Result)/2;
-
-			}
-
-			return static_cast<long long int>(Result);
+			Result=x;
+			x=(Result+input/Result)/2;
 
 		}
 
-        static double FixedPointToDouble(const long long int input){
+		return static_cast<long long int>(Result);
 
-			double result=1.0*input/Fixed_Point;
+	}
 
-			return result;
+	static double FixedPointToDouble(const long long int input){
 
-		}
+		double result=1.0*input/Fixed_Point;
 
-	private:
+		return result;
 
-	class FixedComplex{
+	}
+
+	struct FixedComplex{
 
 		public:
 
@@ -180,11 +178,74 @@ class Qubit_Simulation{
 
 	};
 
+	struct Complex{
+
+		public:
+
+		double Real,Imaginary;
+
+		Complex():Real(0),Imaginary(0){};
+		explicit Complex(double A):Real(A),Imaginary(0){};
+		explicit Complex(double A,double B):Real(A),Imaginary(B){};
+
+		friend Complex operator+(Complex& c,const double d)noexcept{
+			return Complex(c.Real+d,c.Imaginary);
+		}
+		friend Complex operator+(const double d,Complex& c)noexcept{
+			return Complex(c.Real+d,c.Imaginary);
+		}
+		Complex operator+(const Complex& other)const& noexcept{
+			return Complex(Real+other.Real,Imaginary+other.Imaginary);
+		}
+
+
+		friend Complex operator-(const Complex& c,const double d)noexcept{
+			return Complex(c.Real-d,c.Imaginary);
+		}
+		friend Complex operator-(const double d,const Complex& c)noexcept{
+			return Complex(d-c.Real,c.Imaginary);
+		}
+		Complex operator-(const Complex& other)const& noexcept{
+			return Complex(Real-other.Real,Imaginary-other.Imaginary);
+		}
+
+
+		friend Complex operator*(const Complex& c,const double d)noexcept{
+			return Complex(c.Real*d,c.Imaginary*d);
+		}
+		friend Complex operator*(const double d,const Complex& c)noexcept{
+			return Complex(c.Real*d,c.Imaginary*d);
+		}
+		Complex operator*(const Complex& other)const& noexcept{
+			return Complex(Real*other.Real-Imaginary*other.Imaginary,Real*other.Imaginary+Imaginary*other.Real);
+		}
+
+
+		friend Complex operator/(const Complex& c,const double d)noexcept{
+			return Complex(c.Real/d,c.Imaginary/d);
+		}
+		friend Complex operator/(const double& d,const Complex& c)noexcept{
+			return Complex((d*c.Real)/(c.Real*c.Real+c.Imaginary*c.Imaginary),
+						   (d*c.Imaginary)/(c.Real*c.Real+c.Imaginary*c.Imaginary));
+		}
+		Complex operator/(const Complex& other)const& noexcept{
+			return Complex((Real*other.Real+Imaginary*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary),
+						   (Imaginary*other.Real-Real*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary));
+		}
+
+	};
+
 	long long int AbsoluteValue(FixedComplex C){
 
 		__int128_t Result=((__int128_t)C.Real*C.Real+(__int128_t)C.Imaginary*C.Imaginary);
 
 		return NewtonSqrt(Result);
+
+	}
+
+	double AbsoluteValue(Complex C){
+
+		return sqrt((C.Real*C.Real)+(C.Imaginary*C.Imaginary));
 
 	}
 
@@ -582,10 +643,10 @@ class Qubit_Simulation{
 	}
 
 
-//單量子位元邏輯閘
+	//單量子位元邏輯閘
 
 
-	void CostomGate(const int qubit,std::vector<std::vector<double>> Matrix){
+	void CostomGate(const int qubit,std::vector<std::vector<Complex>> Matrix){
 
 
 
@@ -777,7 +838,7 @@ class Qubit_Simulation{
 	}
 
 
-//雙量子位元邏輯閘
+	//雙量子位元邏輯閘
 
 	void CNOTGate(const int controlQubit,const int targetQubit){
 
@@ -880,7 +941,7 @@ class Qubit_Simulation{
 	}
 
 
-//三量子量子位元邏輯閘
+	//三量子量子位元邏輯閘
 
 	void CSWAPGate(const int controlQubit,const int qubit1,const int qubit2){
 
