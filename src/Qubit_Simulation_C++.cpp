@@ -270,7 +270,6 @@ class Qubit_Simulation{
 		};
 		Matrix(const std::vector<std::vector<Complex>> &A):data(A){};
 
-
 		std::vector<Complex>& operator[](const int x){return data[x];};
 		const std::vector<Complex>& operator[](const int x)const{return data[x];};
 
@@ -288,7 +287,6 @@ class Qubit_Simulation{
 
 		}
 
-
 		Matrix operator+(const Matrix& other)const& noexcept{
 
 			if(!IsMatrix()||!other.IsMatrix())
@@ -300,14 +298,21 @@ class Qubit_Simulation{
 			if(data[0].size()!=other.data[0].size())
 					return {};
 
-			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(other.data[0].size()));
+			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(data[0].size()));
 			for(int x=0;x<int(Result.size());x++)
 				for(int y=0;y<int(Result[x].size());y++)
 					Result[x][y]=data[x][y]+other.data[x][y];
 
-			return Result;
+			return Matrix(Result);
 
 		}
+		friend Matrix operator+(const Matrix& A,const std::vector<std::vector<double>>& B){
+			return A+Matrix(B);
+		}
+		friend Matrix operator+(const std::vector<std::vector<double>>& B,const Matrix& A){
+			return Matrix(B)+A;
+		}
+
 		Matrix operator-(const Matrix& other)const& noexcept{
 
 			if(!IsMatrix()||!other.IsMatrix())
@@ -319,62 +324,119 @@ class Qubit_Simulation{
 			if(data[0].size()!=other.data[0].size())
 					return {};
 
-			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(other.data[0].size()));
+			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(data[0].size()));
 			for(int x=0;x<int(Result.size());x++)
 				for(int y=0;y<int(Result[x].size());y++)
 					Result[x][y]=data[x][y]-other.data[x][y];
 
-			return Result;
+			return Matrix(Result);
 
 		}
-
-		/*std::vector<std::vector<Complex>> ScalarMultiplicationMatrix(const double Scalar,const std::vector<std::vector<Complex>> &Matrix){
-
-			if(!IsMatrix(Matrix))
-				return {};
-
-			std::vector<std::vector<Complex>> Result(Matrix.size(),std::vector<Complex>(Matrix[0].size()));
-			for(int x=0;x<int(Matrix.size());x++)
-				for(int y=0;y<int(Matrix[x].size());y++)
-					Result[x][y]=Scalar*Matrix[x][y];
-
-			return Result;
-
+		friend Matrix operator-(const Matrix& A,const std::vector<std::vector<double>>& B){
+			return A-Matrix(B);
 		}
-		std::vector<std::vector<Complex>> ScalarMultiplicationMatrix(const Complex &Scalar,const std::vector<std::vector<Complex>> &Matrix){
-
-			if(!IsMatrix(Matrix))
-				return {};
-
-			std::vector<std::vector<Complex>> Result(Matrix.size(),std::vector<Complex>(Matrix[0].size()));
-			for(int x=0;x<int(Matrix.size());x++)
-				for(int y=0;y<int(Matrix[x].size());y++)
-					Result[x][y]=Scalar*Matrix[x][y];
-
-			return Result;
-
+		friend Matrix operator-(const std::vector<std::vector<double>>& B,const Matrix& A){
+			return Matrix(B)-A;
 		}
 
-		std::vector<std::vector<Complex>> MatrixMultiplication(const std::vector<std::vector<Complex>> &LeftMatrix,const std::vector<std::vector<Complex>>&RightMatrix){
 
-			if(!IsMatrix(LeftMatrix)||!IsMatrix(RightMatrix))
+		friend Matrix operator*(const Matrix& A,const double Scalar)noexcept{
+
+			if(!A.IsMatrix())
 				return {};
 
-			std::vector<std::vector<Complex>> Result(LeftMatrix.size(),std::vector<Complex>(RightMatrix[0].size()));
-			for(int Leftx=0;Leftx<int(LeftMatrix.size());Leftx++)
-				for(int Righty=0;Righty<int(RightMatrix[0].size());Righty++){
+			std::vector<std::vector<Complex>> Result(A.data.size(),std::vector<Complex>(A.data[0].size()));
+			for(int x=0;x<int(Result.size());x++)
+				for(int y=0;y<int(Result[x].size());y++)
+					Result[x][y]=A.data[x][y]*Scalar;
+
+			return Matrix(Result);
+
+		}
+		friend Matrix operator*(const double Scalar,const Matrix& A)noexcept{
+
+			return A*Scalar;
+
+		}
+		friend Matrix operator*(const Matrix& A,const Complex& Scalar)noexcept{
+
+			if(!A.IsMatrix())
+				return {};
+
+			std::vector<std::vector<Complex>> Result(A.data.size(),std::vector<Complex>(A.data[0].size()));
+			for(int x=0;x<int(Result.size());x++)
+				for(int y=0;y<int(Result[x].size());y++)
+					Result[x][y]=A.data[x][y]*Scalar;
+
+			return Matrix(Result);
+
+		}
+		friend Matrix operator*(const Complex& Scalar,const Matrix& A)noexcept{
+
+			return A*Scalar;
+
+		}
+		Matrix operator*(const Matrix& other)const& noexcept{
+
+			if(!IsMatrix()||!other.IsMatrix())
+				return {};
+
+			if(data[0].size()!=other.data.size())
+				return {};
+
+			std::vector<std::vector<Complex>> Result(data.size(),std::vector<Complex>(other.data[0].size()));
+			for(int Leftx=0;Leftx<int(data.size());Leftx++)
+				for(int Righty=0;Righty<int(other.data[0].size());Righty++){
 
 					Complex sum=Complex(0);
-					for(int count=0;count<int(LeftMatrix[0].size());count++)
-						sum=sum+(LeftMatrix[Leftx][count]*RightMatrix[count][Righty]);
+					for(int count=0;count<int(data[0].size());count++)
+						sum=sum+(data[Leftx][count]*other[count][Righty]);
 
 					Result[Leftx][Righty]=sum;
 
 				}
 
-			return Result;
+			return Matrix(Result);
 
-		}*/
+		}
+		friend Matrix operator*(const Matrix& A,const std::vector<std::vector<double>> B)noexcept{
+
+			return A*Matrix(B);
+
+		}
+		friend Matrix operator*(const std::vector<std::vector<double>> B,const Matrix& A)noexcept{
+
+			return Matrix(B)*A;
+
+		}
+
+		friend Matrix operator/(const Matrix& A,const double Scalar)noexcept{
+
+			if(!A.IsMatrix())
+				return {};
+
+			std::vector<std::vector<Complex>> Result(A.data.size(),std::vector<Complex>(A.data[0].size()));
+			for(int x=0;x<int(Result.size());x++)
+				for(int y=0;y<int(Result[x].size());y++)
+					Result[x][y]=A.data[x][y]/Scalar;
+
+			return Matrix(Result);
+
+		}
+		friend Matrix operator/(const Matrix& A,const Complex& Scalar)noexcept{
+
+			if(!A.IsMatrix())
+				return {};
+
+			std::vector<std::vector<Complex>> Result(A.data.size(),std::vector<Complex>(A.data[0].size()));
+			for(int x=0;x<int(Result.size());x++)
+				for(int y=0;y<int(Result[x].size());y++)
+					Result[x][y]=A.data[x][y]/Scalar;
+
+			return Matrix(Result);
+
+		}
+
 
 
 	};
@@ -386,7 +448,6 @@ class Qubit_Simulation{
 		return NewtonSqrt(Result);
 
 	}
-
 	double AbsoluteValue(Complex C){
 
 		return sqrt((C.Real*C.Real)+(C.Imaginary*C.Imaginary));
