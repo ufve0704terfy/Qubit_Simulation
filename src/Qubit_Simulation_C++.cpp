@@ -267,6 +267,11 @@ class Qubit_Simulation{
 			return 1;
 
 		}
+		bool IsSquareMatrix() const{
+
+			return (!IsMatrix()&&data.size()!=data[0].size());
+
+		}
 
 		Matrix operator+(const Matrix& other)const& noexcept{
 
@@ -428,17 +433,28 @@ class Qubit_Simulation{
 
 	public:
 
-		static inline long long int AbsoluteValue(const FixedComplex C){
+		static inline bool IsZero(const Complex &C){
+
+			return ((AbsoluteValue(C.Real)<Double_Epsilon)&&(AbsoluteValue(C.Imaginary)<Double_Epsilon));
+
+		}
+
+		static inline double AbsoluteValue(const double &D){
+
+			return (D>0?D:-D);
+
+		}
+
+		static inline long long int AbsoluteValue(const FixedComplex &C){
 
 			__int128_t Result=((__int128_t)C.Real*C.Real+(__int128_t)C.Imaginary*C.Imaginary);
 
 			return NewtonSqrt(Result);
 
 		}
-		static inline double AbsoluteValue(const Complex C){
 
+		static inline double AbsoluteValue(const Complex &C){
 			return sqrt((C.Real*C.Real)+(C.Imaginary*C.Imaginary));
-
 		}
 
 		static inline long long int NewtonSqrt(const __int128_t input){
@@ -460,7 +476,157 @@ class Qubit_Simulation{
 
 		}
 
+		static inline Complex Conjugate(const Complex &C){
 
+			return Complex(C.Real,-C.Imaginary);
+
+		}
+
+
+		static Matrix GenerateUnitMatrix(const int &order){
+
+			Matrix UnitMatrix=Matrix(std::vector<std::vector<Complex>>(order,std::vector<Complex>(order,Complex())));
+			for(int count=0;count<order;count++)
+				UnitMatrix[count][count]=Complex(1);
+
+			return UnitMatrix;
+
+		}
+
+		static inline void AdditionOneRowToAnotherRow(const Complex &Scalar,const int &AddedRow,const int &Row,Matrix &A){
+
+			if(!A.IsMatrix())
+				return ;
+
+			if(AddedRow>=int(A.data.size())||AddedRow<0||Row>=int(A.data.size())||Row<0||Row==AddedRow)
+				return ;
+
+			for(int y=0;y<int(A[0].size());y++)
+				A[Row][y]=A[Row][y]+A[AddedRow][y]*Scalar;
+
+		}
+
+		static inline void MultipleOfARow(const Complex &Scalar,const int &Row,Matrix &A){
+
+			if(!A.IsMatrix())
+				return;
+
+			if(Row>=int(A.data.size())||Row<0||(Scalar.Real==0&&Scalar.Imaginary==0))
+				return;
+
+			for(int y=0;y<int(A[Row].size());y++)
+				A[Row][y]=A[Row][y]*Scalar;
+
+		}
+
+		static inline void InterchangeOfTwoRow(const std::pair<int,int> &InterchangeRow,Matrix &A){
+
+			if(!A.IsMatrix())
+				return;
+
+			if(InterchangeRow.first>=int(A.data.size())||InterchangeRow.first<0||InterchangeRow.second>=int(A.data.size())||InterchangeRow.second<0)
+				return;
+
+			std::swap(A[InterchangeRow.first],A[InterchangeRow.second]);
+
+		}
+
+		static inline Matrix HermitianTranspose(Matrix A){
+
+			if(!A.IsSquareMatrix())
+				return Matrix();
+
+			for(int x=0;x<int(A.data.size());x++){
+
+				A[x][x]=Conjugate(A[x][x]);
+
+				for(int y=0;y<x;y++)
+					std::swap(A[x][y],A[y][x]),
+					A[x][y]=Conjugate(A[x][y]),
+					A[y][x]=Conjugate(A[y][x]);
+
+			}
+
+			return A;
+
+		}
+
+		static Complex DeterminantsOfMatrix(const Matrix &A){
+
+			if(!A.IsSquareMatrix())
+				return Complex();
+
+			if(A.data.size()==1)
+				return A[0][0];
+
+			if(A.data.size()==2)
+				return A[0][0]*A[1][1]-A[0][1]*A[1][0];
+
+			Complex Sum=Complex();
+
+			for(int y=0;y<int(A[0].size());y++){
+
+				Matrix ReducedMatrix=Matrix(std::vector<std::vector<Complex>>(A.data.size()-1));
+				Complex now=A[0][y];
+
+				for(int x=1;x<int(A.data.size());x++)
+					for(int Column=0;Column<int(A[0].size());Column++)
+						if(y!=Column)
+							ReducedMatrix[x-1].push_back(A[x][Column]);
+
+				if(y%2==1)
+					now=now-1;
+
+				Sum=Sum+now*DeterminantsOfMatrix(ReducedMatrix);
+
+			}
+
+			return Sum;
+
+		}
+
+		static Matrix GenerateInverseMatrix(const Matrix &A){
+
+			if(!A.IsSquareMatrix())
+				return {};
+
+			if(IsZero(DeterminantsOfMatrix(A))||A[0].size()==0)
+				return {};
+
+			Matrix Now=A,Inverse=GenerateUnitMatrix(A.data.size());
+			for(int y=0;y<int(Now.data.size());y++){
+
+				if(IsZero(Now[y][y])){
+
+					for(int x=0;x<int(Now.data.size());x++)
+						if(IsZero(Now[x][y])){
+							InterchangeOfTwoRow({x,y},Now);
+							InterchangeOfTwoRow({x,y},Inverse);
+							break;
+						}
+
+				}
+
+				MultipleOfARow(1/Now[y][y],y,Inverse);
+				MultipleOfARow(1/Now[y][y],y,Now);
+
+				for(int x=0;x<int(Now.data.size());x++)
+					if(x!=y&&IsZero(Now[x][y])){
+						AdditionOneRowToAnotherRow(Complex()-Now[x][y],y,x,Inverse);
+						AdditionOneRowToAnotherRow(Complex()-Now[x][y],y,x,Now);
+					}
+
+			}
+
+			return Inverse;
+
+		}
+
+		static Matrix GenerateQuantumLogicGate(const Matrix &A){
+
+
+
+		}
 
 	};
 
