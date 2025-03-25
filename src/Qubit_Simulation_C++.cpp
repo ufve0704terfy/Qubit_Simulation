@@ -38,7 +38,7 @@ class Qubit_Simulation{
 
 		public:
 
-		long long int Real,Imaginary;
+		long long int Real=0,Imaginary=0;
 
 			FixedComplex():Real(0),Imaginary(0){};
 			explicit FixedComplex(double A):Real(FixedPoint(A)),Imaginary(0){};
@@ -164,7 +164,7 @@ class Qubit_Simulation{
 
 		public:
 
-		double Real,Imaginary;
+		double Real=0.0,Imaginary=0.0;
 
 		Complex():Real(0),Imaginary(0){};
 		explicit Complex(double A):Real(A),Imaginary(0){};
@@ -204,13 +204,19 @@ class Qubit_Simulation{
 
 
 		friend Complex operator/(const Complex& c,const double d)noexcept{
+			if(Qubit_Simulation::QMath::AbsoluteValue(d))
+				return Complex();
 			return Complex(c.Real/d,c.Imaginary/d);
 		}
 		friend Complex operator/(const double& d,const Complex& c)noexcept{
+			if(Qubit_Simulation::QMath::IsZero(c))
+				return Complex();
 			return Complex((d*c.Real)/(c.Real*c.Real+c.Imaginary*c.Imaginary),
-						   (d*c.Imaginary)/(c.Real*c.Real+c.Imaginary*c.Imaginary));
+						   (-d*c.Imaginary)/(c.Real*c.Real+c.Imaginary*c.Imaginary));
 		}
 		Complex operator/(const Complex& other)const& noexcept{
+			if(Qubit_Simulation::QMath::IsZero(other))
+				return Complex();
 			return Complex((Real*other.Real+Imaginary*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary),
 						   (Imaginary*other.Real-Real*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary));
 		}
@@ -232,7 +238,7 @@ class Qubit_Simulation{
 
 	public:
 
-		std::vector<std::vector<Complex>> data;
+		std::vector<std::vector<Complex>> data={{}};
 
 		Matrix():data({{}}){};
 		Matrix(const std::vector<double> &A){
@@ -280,7 +286,7 @@ class Qubit_Simulation{
 		}
 		bool IsSquareMatrix() const{
 
-			return (!IsMatrix()&&data.size()!=data[0].size());
+			return (IsMatrix()&&data.size()==data[0].size());
 
 		}
 
@@ -463,7 +469,6 @@ class Qubit_Simulation{
 
 	};
 
-	private:
 
 	class QMath{
 
@@ -728,7 +733,7 @@ class Qubit_Simulation{
 				if(IsZero(Now[y][y])){
 
 					for(int x=0;x<int(Now.data.size());x++)
-						if(IsZero(Now[x][y])){
+						if(!IsZero(Now[x][y])){
 							InterchangeOfTwoRow({x,y},Now);
 							InterchangeOfTwoRow({x,y},Inverse);
 							break;
@@ -740,7 +745,7 @@ class Qubit_Simulation{
 				MultipleOfARow(1/Now[y][y],y,Now);
 
 				for(int x=0;x<int(Now.data.size());x++)
-					if(x!=y&&IsZero(Now[x][y])){
+					if(x!=y&&!IsZero(Now[x][y])){
 						AdditionOneRowToAnotherRow(Complex()-Now[x][y],y,x,Inverse);
 						AdditionOneRowToAnotherRow(Complex()-Now[x][y],y,x,Now);
 					}
@@ -755,7 +760,7 @@ class Qubit_Simulation{
 
 		}
 
-		Matrix GenerateDiagonalMatrix(const Matrix &A){
+		static Matrix GenerateDiagonalMatrix(const Matrix &A){
 
 			if(!A.IsSquareMatrix()||A.data.size()==0)
 				return {};
@@ -782,7 +787,7 @@ class Qubit_Simulation{
 
 		}
 
-		std::pair<Matrix,Matrix> GenerateQRFactorization(const Matrix &A){
+		static std::pair<Matrix,Matrix> GenerateQRFactorization(const Matrix &A){
 
 			if(!A.IsSquareMatrix()||A.data.size()==0||A.data.size()==1)
 				return {{},{}};
@@ -810,7 +815,7 @@ class Qubit_Simulation{
 
 		}
 
-		Matrix GenerateBlockEmbeddingForHouseholder(const int &order,const Matrix &A){
+		static Matrix GenerateBlockEmbeddingForHouseholder(const int &order,const Matrix &A){
 
 			if(!A.IsSquareMatrix()||int(A.data.size())>order)
 				return {};
@@ -1581,8 +1586,20 @@ class Qubit_Simulation{
 
 int main() {
 
+
+
+
+
 	Qubit_Simulation a=Qubit_Simulation(3);
 
+	Qubit_Simulation::Matrix A;
+	A.InputMatrix();
+	//Qubit_Simulation::Complex::OutputComplex(Qubit_Simulation::QMath::DeterminantsOfMatrix(A));
+	Qubit_Simulation::Matrix::OutputMatrix(Qubit_Simulation::QMath::GenerateQRFactorization(A).first);
+
+
+
+	/*
 	a.HadamardGate(0);
 	a.CNOTGate(0,1);
 	a.OuputEntangledQubitSet(0);
@@ -1594,7 +1611,7 @@ int main() {
 	std::cout<<a.ObserverQubit(1)<<std::endl;
 
 
-
+*/
 /*
 	a.PositiveGenerateBellState();
 
