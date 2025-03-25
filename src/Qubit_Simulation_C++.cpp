@@ -483,6 +483,86 @@ class Qubit_Simulation{
 		}
 
 
+		static inline bool IsSameMatrix(const Matrix &Matrix1,const Matrix &Matrix2){
+
+
+			if(Matrix1.data.size()!=Matrix2.data.size()||!Matrix1.IsMatrix()||!Matrix2.IsMatrix())
+				return 0;
+
+			if(Matrix1[0].size()!=Matrix2[0].size())
+				return 0;
+
+			for(int x=0;x<int(Matrix1.data.size());x++)
+				for(int y=0;y<int(Matrix1[x].size());y++)
+					if(!IsZero(Matrix1[x][y]-Matrix2[x][y]))
+						return 0;
+
+			return 1;
+
+		}
+
+		static inline bool IsDiagonalMatrix(const Matrix &A){
+
+			if(!A.IsSquareMatrix())
+				return 0;
+
+			for(int x=0;x<int(A.data.size());x++)
+				for(int y=0;y<int(A[0].size());y++)
+					if(x!=y&&!IsZero(A[x][y]))
+						return 0;
+
+			return 1;
+
+		}
+
+		static inline double NormOfVector(const std::vector<Complex> &Vector){
+
+			double Sum=0;
+			for(int count=0;count<int(Vector.size());count++)
+				Sum+=(Vector[count].Real*Vector[count].Real)+(Vector[count].Imaginary*Vector[count].Imaginary);
+
+			return sqrt(Sum);
+
+		}
+
+		static inline std::vector<Complex> ScalarMultiplicationVector(const Complex &Scalar,const std::vector<Complex> &Vector){
+
+			std::vector<Complex> Result(Vector.size());
+			for(int count=0;count<int(Vector.size());count++)
+				Result[count]=Vector[count]*Scalar;
+
+			return Result;
+
+		}
+
+		static inline Matrix GenerateReflectionMatrix(const std::vector<Complex> &NormalVector){
+
+			return GenerateUnitMatrix(NormalVector.size())-((2/DotProduct(NormalVector,NormalVector))*OuterProduct(NormalVector,NormalVector));
+
+		}
+
+		static inline Complex DotProduct(const std::vector<Complex> &Vector1,const std::vector<Complex> &Vector2){
+
+			if(Vector1.size()!=Vector2.size())
+				return Complex();
+
+			Complex Sum=Complex();
+			for(int count=0;count<int(Vector1.size());count++)
+				Sum=Sum+Conjugate(Vector1[count])*Vector2[count];
+
+			return Sum;
+
+		}
+
+		static inline Matrix OuterProduct(const std::vector<Complex> &Vector1,const std::vector<Complex> &Vector2){
+
+			if(Vector1.size()!=Vector2.size())
+				return {};
+
+			return Matrix(Vector1)*TransposeMatrix(Matrix(Vector2));
+
+		}
+
 		static Matrix GenerateUnitMatrix(const int &order){
 
 			Matrix UnitMatrix=Matrix(std::vector<std::vector<Complex>>(order,std::vector<Complex>(order,Complex())));
@@ -531,7 +611,7 @@ class Qubit_Simulation{
 
 		}
 
-		static inline Matrix HermitianTranspose(Matrix A){
+		static inline Matrix HermitianTransposeMatrix(Matrix A){
 
 			if(!A.IsSquareMatrix())
 				return Matrix();
@@ -546,6 +626,19 @@ class Qubit_Simulation{
 					A[y][x]=Conjugate(A[y][x]);
 
 			}
+
+			return A;
+
+		}
+
+		static inline Matrix TransposeMatrix(Matrix A){
+
+			if(!A.IsSquareMatrix())
+				return Matrix();
+
+			for(int x=0;x<int(A.data.size());x++)
+				for(int y=0;y<x;y++)
+					std::swap(A[x][y],A[y][x]);
 
 			return A;
 
@@ -624,9 +717,86 @@ class Qubit_Simulation{
 
 		static Matrix GenerateQuantumLogicGate(const Matrix &A){
 
+		}
 
+		Matrix GenerateDiagonalMatrix(const Matrix &A){
+
+			if(!A.IsSquareMatrix()||A.data.size()==0)
+				return {};
+
+			if(A.data.size()==1)
+				return A;
+
+			Matrix Now=A,Front=Matrix();
+			std::pair<Matrix,Matrix> QR;
+			while(!IsDiagonalMatrix(Now)&&!IsSameMatrix(Front,Now)){
+
+				Front=Now;
+				QR=GenerateQRFactorization(Now);
+				Now=QR.second*QR.first;
+
+			}
+
+			for(int x=0;x<int(Now.data.size());x++)
+				for(int y=0;y<int(Now[x].size());y++)
+					if(x!=y)
+						Now[x][y]=Complex();
+
+			return Now;
 
 		}
+
+		std::pair<Matrix,Matrix> GenerateQRFactorization(const Matrix &A){
+
+			if(!A.IsSquareMatrix()||A.data.size()==0||A.data.size()==1)
+				return {{},{}};
+
+
+			Matrix Q=GenerateUnitMatrix(A.data.size()),R=A;
+			for(int y=0;y<int(A.data.size()-1);y++){
+
+				std::vector<Complex> Set(A.data.size()-y);
+				for(int x=y;x<int(A.data.size());x++)
+					Set[x-y]=R[x][y];
+
+
+				Set[0]=Set[0]-NormOfVector(Set);
+				Set=ScalarMultiplicationVector(Complex(1/NormOfVector(Set)),Set);
+				Matrix Caculate=GenerateReflectionMatrix(Set);
+				Caculate=GenerateBlockEmbeddingForHouseholder(A.data.size(),Caculate);
+
+				Q=Q*Caculate;
+				R=Caculate*R;
+
+			}
+
+			return {Q,R};
+
+		}
+
+		Matrix GenerateBlockEmbeddingForHouseholder(const int &order,const Matrix &A){
+
+			if(!A.IsSquareMatrix()||int(A.data.size())>order)
+				return {};
+
+			if(order==int(A.data.size()))
+				return A;
+
+			Matrix Result=Matrix(std::vector<std::vector<Complex>>(order,std::vector<Complex>(order,Complex())));
+			for(int count=0;count<order;count++)
+				Result[count][count]=Complex(1);
+
+			for(int x=order-A.data.size();x<order;x++)
+				for(int y=order-A.data.size();y<order;y++)
+					Result[x][y]=A[x-order+A.data.size()][y-order+A.data.size()];
+
+			return Result;
+
+		}
+
+
+
+
 
 	};
 
