@@ -215,6 +215,17 @@ class Qubit_Simulation{
 						   (Imaginary*other.Real-Real*other.Imaginary)/(other.Real*other.Real+other.Imaginary*other.Imaginary));
 		}
 
+		inline void InputComplex(){
+
+			std::cin>>Real>>Imaginary;
+
+		}
+		static inline void OutputComplex(const Complex& C){
+
+			std::cout<<C.Real<<','<<C.Imaginary;
+
+		}
+
 	};
 
 	struct Matrix{
@@ -423,7 +434,32 @@ class Qubit_Simulation{
 
 		}
 
+		inline void InputMatrix(){
 
+			int Row,Column;
+			std::cout<<"The number of the Row and the Column"<<std::endl;
+			std::cin>>Row>>Column;
+
+			data=std::vector<std::vector<Complex>>(Row,std::vector<Complex>(Column,Complex()));
+			for(int x=0;x<Row;x++)
+				for(int y=0;y<Column;y++)
+					data[x][y].InputComplex();
+
+		}
+		static inline void OutputMatrix(const Matrix& A){
+
+			if(!A.IsMatrix())
+				return ;
+
+			for(int x=0;x<int(A.data.size());x++){
+				for(int y=0;y<int(A[x].size());y++)
+					Complex::OutputComplex(A[x][y]),std::cout<<' '<<' ';
+				std::cout<<std::endl;
+			}
+
+			std::cout<<std::endl;
+
+		}
 
 	};
 
@@ -1556,6 +1592,9 @@ int main() {
 	std::cout<<std::endl;
 	std::cout<<a.ObserverQubit(0)<<std::endl;
 	std::cout<<a.ObserverQubit(1)<<std::endl;
+
+
+
 /*
 	a.PositiveGenerateBellState();
 
