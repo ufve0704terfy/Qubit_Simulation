@@ -8,28 +8,28 @@
 
 using namespace boost::multiprecision;
 
+static constexpr const double Double_Epsilon = 1e-9;
+static constexpr const long long int Fixed_Point = (1LL << 62);
+static constexpr const int Fixed_shift = 62;
+static constexpr const double Root_half = 0.70710678118;
+static constexpr const double Pi = 3.141592658979;
+static constexpr const unsigned long long int Fixed_Pi = 14488038916154245120ULL;
+
 /*qubit中的複數的虛數部份以及實數部分都介於-1~1
  * 因此使用long long配合定點數可以有效的解決運算中的浮點誤差問題
  * 以2^62為縮放基準
  */
 
-class Qubit_Simulation {
+
+class FixedComplex {
 
 public:
-
-	static constexpr const double Double_Epsilon = 1e-9;
-	static constexpr const long long int Fixed_Point = (1LL << 62);
-	static constexpr const int Fixed_shift = 62;
-	static constexpr const double Root_half = 0.70710678118;
-	static constexpr const double Pi = 3.141592658979;
-	static constexpr const unsigned long long int Fixed_Pi = 14488038916154245120ULL;
 
 	static long long int FixedPoint(const double input) {
 
 		return static_cast<long long>(input * Fixed_Point);
 
 	}
-
 	static double FixedPointToDouble(const long long int input) {
 
 		double result = 1.0 * input / Fixed_Point;
@@ -38,812 +38,861 @@ public:
 
 	}
 
-	struct FixedComplex {
+	long long int Real = 0, Imaginary = 0;
 
-	public:
+	FixedComplex() :Real(0), Imaginary(0) {};
+	explicit FixedComplex(double A) :Real(FixedPoint(A)), Imaginary(0) {};
+	explicit FixedComplex(double A, double B) :Real(FixedPoint(A)), Imaginary(FixedPoint(B)) {};
+	FixedComplex(long long int A) :Real(A), Imaginary(0) {};
+	FixedComplex(long long int A, long long int B) :Real(A), Imaginary(B) {};
 
-		long long int Real = 0, Imaginary = 0;
-
-		FixedComplex() :Real(0), Imaginary(0) {};
-		explicit FixedComplex(double A) :Real(FixedPoint(A)), Imaginary(0) {};
-		explicit FixedComplex(double A, double B) :Real(FixedPoint(A)), Imaginary(FixedPoint(B)) {};
-		FixedComplex(long long int A) :Real(A), Imaginary(0) {};
-		FixedComplex(long long int A, long long int B) :Real(A), Imaginary(B) {};
-
-		friend FixedComplex operator+(FixedComplex& c, const double d)noexcept {
-			return FixedComplex(c.Real + FixedPoint(d), c.Imaginary);
-		}
-		friend FixedComplex operator+(const double d, FixedComplex& c)noexcept {
-			return FixedComplex(c.Real + FixedPoint(d), c.Imaginary);
-		}
-		friend FixedComplex operator+(const FixedComplex& c, const long long int d)noexcept {
-			return FixedComplex(c.Real + d, c.Imaginary);
-		}
-		friend FixedComplex operator+(const long long int d, const FixedComplex& c)noexcept {
-			return FixedComplex(c.Real + d, c.Imaginary);
-		}
-		FixedComplex operator+(const FixedComplex& other)const& noexcept {
-			return FixedComplex(Real + other.Real, Imaginary + other.Imaginary);
-		}
+	friend FixedComplex operator+(FixedComplex& c, const double d)noexcept {
+		return FixedComplex(c.Real + FixedPoint(d), c.Imaginary);
+	}
+	friend FixedComplex operator+(const double d, FixedComplex& c)noexcept {
+		return FixedComplex(c.Real + FixedPoint(d), c.Imaginary);
+	}
+	friend FixedComplex operator+(const FixedComplex& c, const long long int d)noexcept {
+		return FixedComplex(c.Real + d, c.Imaginary);
+	}
+	friend FixedComplex operator+(const long long int d, const FixedComplex& c)noexcept {
+		return FixedComplex(c.Real + d, c.Imaginary);
+	}
+	FixedComplex operator+(const FixedComplex& other)const& noexcept {
+		return FixedComplex(Real + other.Real, Imaginary + other.Imaginary);
+	}
 
 
-		friend FixedComplex operator-(const FixedComplex& c, const double d)noexcept {
-			return FixedComplex(c.Real - FixedPoint(d), c.Imaginary);
-		}
-		friend FixedComplex operator-(const double d, const FixedComplex& c)noexcept {
-			return FixedComplex(FixedPoint(d) - c.Real, c.Imaginary);
-		}
-		friend FixedComplex operator-(const FixedComplex& c, const long long int d)noexcept {
-			return FixedComplex(c.Real - d, c.Imaginary);
-		}
-		friend FixedComplex operator-(const long long int d, const FixedComplex& c)noexcept {
-			return FixedComplex(d - c.Real, c.Imaginary);
-		}
-		FixedComplex operator-(const FixedComplex& other)const& noexcept {
-			return FixedComplex(Real - other.Real, Imaginary - other.Imaginary);
-		}
+	friend FixedComplex operator-(const FixedComplex& c, const double d)noexcept {
+		return FixedComplex(c.Real - FixedPoint(d), c.Imaginary);
+	}
+	friend FixedComplex operator-(const double d, const FixedComplex& c)noexcept {
+		return FixedComplex(FixedPoint(d) - c.Real, c.Imaginary);
+	}
+	friend FixedComplex operator-(const FixedComplex& c, const long long int d)noexcept {
+		return FixedComplex(c.Real - d, c.Imaginary);
+	}
+	friend FixedComplex operator-(const long long int d, const FixedComplex& c)noexcept {
+		return FixedComplex(d - c.Real, c.Imaginary);
+	}
+	FixedComplex operator-(const FixedComplex& other)const& noexcept {
+		return FixedComplex(Real - other.Real, Imaginary - other.Imaginary);
+	}
 
 
-		friend FixedComplex operator*(const FixedComplex& c, const double d)noexcept {
-			int128_t Real_result = ((int128_t)c.Real * FixedPoint(d)) >> Fixed_shift,
-				Imaginary_result = ((int128_t)c.Imaginary * FixedPoint(d)) >> Fixed_shift;
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		friend FixedComplex operator*(const double d, const FixedComplex& c)noexcept {
-			int128_t Real_result = ((int128_t)c.Real * FixedPoint(d)) >> Fixed_shift,
-				Imaginary_result = ((int128_t)c.Imaginary * FixedPoint(d)) >> Fixed_shift;
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		friend FixedComplex operator*(const FixedComplex& c, const long long d)noexcept {
-			int128_t Real_result = ((int128_t)c.Real * d) >> Fixed_shift,
-				Imaginary_result = ((int128_t)c.Imaginary * d) >> Fixed_shift;
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		friend FixedComplex operator*(const long long d, const FixedComplex& c)noexcept {
-			int128_t Real_result = ((int128_t)c.Real * d) >> Fixed_shift,
-				Imaginary_result = ((int128_t)c.Imaginary * d) >> Fixed_shift;
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		FixedComplex operator*(const FixedComplex& other)const& noexcept {
-			int128_t Real_result = ((int128_t)Real * other.Real - (int128_t)Imaginary * other.Imaginary) >> Fixed_shift,
-				Imaginary_result = ((int128_t)Real * other.Imaginary + (int128_t)Imaginary * other.Real) >> Fixed_shift;
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
+	friend FixedComplex operator*(const FixedComplex& c, const double d)noexcept {
+		int128_t Real_result = ((int128_t)c.Real * FixedPoint(d)) >> Fixed_shift,
+			Imaginary_result = ((int128_t)c.Imaginary * FixedPoint(d)) >> Fixed_shift;
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	friend FixedComplex operator*(const double d, const FixedComplex& c)noexcept {
+		int128_t Real_result = ((int128_t)c.Real * FixedPoint(d)) >> Fixed_shift,
+			Imaginary_result = ((int128_t)c.Imaginary * FixedPoint(d)) >> Fixed_shift;
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	friend FixedComplex operator*(const FixedComplex& c, const long long d)noexcept {
+		int128_t Real_result = ((int128_t)c.Real * d) >> Fixed_shift,
+			Imaginary_result = ((int128_t)c.Imaginary * d) >> Fixed_shift;
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	friend FixedComplex operator*(const long long d, const FixedComplex& c)noexcept {
+		int128_t Real_result = ((int128_t)c.Real * d) >> Fixed_shift,
+			Imaginary_result = ((int128_t)c.Imaginary * d) >> Fixed_shift;
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	FixedComplex operator*(const FixedComplex& other)const& noexcept {
+		int128_t Real_result = ((int128_t)Real * other.Real - (int128_t)Imaginary * other.Imaginary) >> Fixed_shift,
+			Imaginary_result = ((int128_t)Real * other.Imaginary + (int128_t)Imaginary * other.Real) >> Fixed_shift;
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
 
 
-		friend FixedComplex operator/(const FixedComplex& c, const double d)noexcept {
-			int128_t Real_result = (((int128_t)c.Real << Fixed_shift) / FixedPoint(d)),
-				Imaginary_result = (((int128_t)c.Imaginary << Fixed_shift) / FixedPoint(d));
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		friend FixedComplex operator/(const double& d, const FixedComplex& c)noexcept {
-			int128_t denominator = ((int128_t)c.Real * c.Real + c.Imaginary * c.Imaginary);
-			int128_t Real_result = FixedPoint(d) > c.Real ?
-				((int128_t)FixedPoint(d) << Fixed_shift) / denominator * c.Real :
-				((int128_t)c.Real << Fixed_shift) / denominator * FixedPoint(d),
+	friend FixedComplex operator/(const FixedComplex& c, const double d)noexcept {
+		int128_t Real_result = (((int128_t)c.Real << Fixed_shift) / FixedPoint(d)),
+			Imaginary_result = (((int128_t)c.Imaginary << Fixed_shift) / FixedPoint(d));
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	friend FixedComplex operator/(const double& d, const FixedComplex& c)noexcept {
+		int128_t denominator = ((int128_t)c.Real * c.Real + c.Imaginary * c.Imaginary);
+		int128_t Real_result = FixedPoint(d) > c.Real ?
+			((int128_t)FixedPoint(d) << Fixed_shift) / denominator * c.Real :
+			((int128_t)c.Real << Fixed_shift) / denominator * FixedPoint(d),
 
-				Imaginary_result = FixedPoint(d) > c.Imaginary ?
-				-((int128_t)FixedPoint(d) << Fixed_shift) / denominator * c.Imaginary :
-				-((int128_t)c.Imaginary << Fixed_shift) / denominator * FixedPoint(d);
+			Imaginary_result = FixedPoint(d) > c.Imaginary ?
+			-((int128_t)FixedPoint(d) << Fixed_shift) / denominator * c.Imaginary :
+			-((int128_t)c.Imaginary << Fixed_shift) / denominator * FixedPoint(d);
 
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		friend FixedComplex operator/(const FixedComplex& c, const long long d)noexcept {
-			int128_t Real_result = (((int128_t)c.Real << Fixed_shift) / d),
-				Imaginary_result = (((int128_t)c.Imaginary << Fixed_shift) / d);
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		friend FixedComplex operator/(const long long& d, const FixedComplex& c)noexcept {
-			int128_t denominator = ((int128_t)c.Real * c.Real + c.Imaginary * c.Imaginary);
-			int128_t Real_result = d > c.Real ?
-				((int128_t)d << Fixed_shift) / denominator * c.Real :
-				((int128_t)c.Real << Fixed_shift) / denominator * d,
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	friend FixedComplex operator/(const FixedComplex& c, const long long d)noexcept {
+		int128_t Real_result = (((int128_t)c.Real << Fixed_shift) / d),
+			Imaginary_result = (((int128_t)c.Imaginary << Fixed_shift) / d);
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	friend FixedComplex operator/(const long long& d, const FixedComplex& c)noexcept {
+		int128_t denominator = ((int128_t)c.Real * c.Real + c.Imaginary * c.Imaginary);
+		int128_t Real_result = d > c.Real ?
+			((int128_t)d << Fixed_shift) / denominator * c.Real :
+			((int128_t)c.Real << Fixed_shift) / denominator * d,
 
-				Imaginary_result = d > c.Imaginary ?
-				-((int128_t)d << Fixed_shift) / denominator * c.Imaginary :
-				-((int128_t)c.Imaginary << Fixed_shift) / denominator * d;
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
-		}
-		FixedComplex operator/(const FixedComplex& other)const& noexcept {
-			int128_t denominator = ((int128_t)other.Real * other.Real + (int128_t)other.Imaginary * other.Imaginary);
-			int128_t Real_result = (Real > other.Real ?
-				(((int128_t)Real << Fixed_shift) / denominator * other.Real) :
-				(((int128_t)other.Real << Fixed_shift) / denominator * Real))
-				+ (Imaginary > other.Imaginary ?
-					(((int128_t)Imaginary << Fixed_shift) / denominator * other.Imaginary) :
-					(((int128_t)other.Imaginary << Fixed_shift) / denominator * Imaginary)),
-				Imaginary_result = (Imaginary > other.Real ?
-					(((int128_t)Imaginary << Fixed_shift) / denominator * other.Real) :
-					(((int128_t)other.Real << Fixed_shift) / denominator * Imaginary))
-				- (Real > other.Imaginary ?
-					(((int128_t)Real << Fixed_shift) / denominator * other.Imaginary) :
-					(((int128_t)other.Imaginary << Fixed_shift) / denominator * Real));
+			Imaginary_result = d > c.Imaginary ?
+			-((int128_t)d << Fixed_shift) / denominator * c.Imaginary :
+			-((int128_t)c.Imaginary << Fixed_shift) / denominator * d;
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+	FixedComplex operator/(const FixedComplex& other)const& noexcept {
+		int128_t denominator = ((int128_t)other.Real * other.Real + (int128_t)other.Imaginary * other.Imaginary);
+		int128_t Real_result = (Real > other.Real ?
+			(((int128_t)Real << Fixed_shift) / denominator * other.Real) :
+			(((int128_t)other.Real << Fixed_shift) / denominator * Real))
+			+ (Imaginary > other.Imaginary ?
+				(((int128_t)Imaginary << Fixed_shift) / denominator * other.Imaginary) :
+				(((int128_t)other.Imaginary << Fixed_shift) / denominator * Imaginary)),
+			Imaginary_result = (Imaginary > other.Real ?
+				(((int128_t)Imaginary << Fixed_shift) / denominator * other.Real) :
+				(((int128_t)other.Real << Fixed_shift) / denominator * Imaginary))
+			- (Real > other.Imaginary ?
+				(((int128_t)Real << Fixed_shift) / denominator * other.Imaginary) :
+				(((int128_t)other.Imaginary << Fixed_shift) / denominator * Real));
 
-			return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+		return FixedComplex(static_cast<long long>(Real_result), static_cast<long long>(Imaginary_result));
+	}
+
+	static inline long long int AbsoluteValue(const FixedComplex& C) {
+
+		int128_t Result = ((int128_t)C.Real * C.Real + (int128_t)C.Imaginary * C.Imaginary);
+
+		return NewtonSqrt(Result);
+
+	}
+
+	static inline long long int NewtonSqrt(const int128_t input) {
+
+		if (input == 0)
+			return 0;
+
+		int128_t Result = input;
+		int128_t x = (Result + 1) / 2;
+
+		while (x < Result) {
+
+			Result = x;
+			x = (Result + input / Result) / 2;
+
 		}
+
+		return static_cast<long long int>(Result);
+
+	}
+
+};
+
+class Complex {
+
+public:
+
+	double Real = 0.0, Imaginary = 0.0;
+
+	Complex() :Real(0), Imaginary(0) {};
+	explicit Complex(double A) :Real(A), Imaginary(0) {};
+	explicit Complex(double A, double B) :Real(A), Imaginary(B) {};
+
+	friend Complex operator+(Complex& c, const double d)noexcept {
+		return Complex(c.Real + d, c.Imaginary);
+	}
+	friend Complex operator+(const double d, Complex& c)noexcept {
+		return Complex(c.Real + d, c.Imaginary);
+	}
+	Complex operator+(const Complex& other)const& noexcept {
+		return Complex(Real + other.Real, Imaginary + other.Imaginary);
+	}
+
+
+	friend Complex operator-(const Complex& c, const double d)noexcept {
+		return Complex(c.Real - d, c.Imaginary);
+	}
+	friend Complex operator-(const double d, const Complex& c)noexcept {
+		return Complex(d - c.Real, c.Imaginary);
+	}
+	Complex operator-(const Complex& other)const& noexcept {
+		return Complex(Real - other.Real, Imaginary - other.Imaginary);
+	}
+
+
+	friend Complex operator*(const Complex& c, const double d)noexcept {
+		return Complex(c.Real * d, c.Imaginary * d);
+	}
+	friend Complex operator*(const double d, const Complex& c)noexcept {
+		return Complex(c.Real * d, c.Imaginary * d);
+	}
+	Complex operator*(const Complex& other)const& noexcept {
+		return Complex(Real * other.Real - Imaginary * other.Imaginary, Real * other.Imaginary + Imaginary * other.Real);
+	}
+
+
+	friend Complex operator/(const Complex& c, const double d)noexcept {
+		if (std::abs(d) == 0.0)
+			return Complex();
+		return Complex(c.Real / d, c.Imaginary / d);
+	}
+	friend Complex operator/(const double& d, const Complex& c)noexcept {
+		if (IsZero(c))
+			return Complex();
+		return Complex((d * c.Real) / (c.Real * c.Real + c.Imaginary * c.Imaginary),
+			(-d * c.Imaginary) / (c.Real * c.Real + c.Imaginary * c.Imaginary));
+	}
+	Complex operator/(const Complex& other)const& noexcept {
+		if (IsZero(other))
+			return Complex();
+		return Complex((Real * other.Real + Imaginary * other.Imaginary) / (other.Real * other.Real + other.Imaginary * other.Imaginary),
+			(Imaginary * other.Real - Real * other.Imaginary) / (other.Real * other.Real + other.Imaginary * other.Imaginary));
+	}
+
+	inline void InputComplex() {
+
+		std::cin >> Real >> Imaginary;
+
+	}
+	static inline void OutputComplex(const Complex& C) {
+
+		std::cout << C.Real << ',' << C.Imaginary;
+
+	}
+
+	static inline bool IsZero(const Complex& C) {
+
+		return ((std::abs(C.Real) < Double_Epsilon) && (std::abs(C.Imaginary) < Double_Epsilon));
+
+	}
+
+	static inline double AbsoluteValue(const Complex& C) {
+		return sqrt((C.Real * C.Real) + (C.Imaginary * C.Imaginary));
+	}
+
+};
+
+class Matrix {
+
+public:
+
+	std::vector<std::vector<Complex>> data = { {} };
+
+	Matrix() :data({ {} }) {};
+	Matrix(const std::vector<double>& A) {
+
+		std::vector<std::vector<Complex>> Result(1, std::vector<Complex>(A.size()));
+
+		for (int y = 0; y<int(A.size()); y++)
+			Result[0][y] = Complex(A[y]);
+
+		data = Result;
 
 	};
+	Matrix(const std::vector<Complex>& A) :data({ A }) {};
+	Matrix(const std::vector<std::vector<double>>& A) {
 
-	struct Complex {
+		if (A.size() == 0)
+			data = { {} };
 
-	public:
+		std::vector<std::vector<Complex>> Result(A.size(), std::vector<Complex>(A[0].size()));
 
-		double Real = 0.0, Imaginary = 0.0;
+		for (int x = 0; x<int(A.size()); x++)
+			for (int y = 0; y<int(A[x].size()); y++)
+				Result[x][y] = Complex(A[x][y]);
 
-		Complex() :Real(0), Imaginary(0) {};
-		explicit Complex(double A) :Real(A), Imaginary(0) {};
-		explicit Complex(double A, double B) :Real(A), Imaginary(B) {};
-
-		friend Complex operator+(Complex& c, const double d)noexcept {
-			return Complex(c.Real + d, c.Imaginary);
-		}
-		friend Complex operator+(const double d, Complex& c)noexcept {
-			return Complex(c.Real + d, c.Imaginary);
-		}
-		Complex operator+(const Complex& other)const& noexcept {
-			return Complex(Real + other.Real, Imaginary + other.Imaginary);
-		}
-
-
-		friend Complex operator-(const Complex& c, const double d)noexcept {
-			return Complex(c.Real - d, c.Imaginary);
-		}
-		friend Complex operator-(const double d, const Complex& c)noexcept {
-			return Complex(d - c.Real, c.Imaginary);
-		}
-		Complex operator-(const Complex& other)const& noexcept {
-			return Complex(Real - other.Real, Imaginary - other.Imaginary);
-		}
-
-
-		friend Complex operator*(const Complex& c, const double d)noexcept {
-			return Complex(c.Real * d, c.Imaginary * d);
-		}
-		friend Complex operator*(const double d, const Complex& c)noexcept {
-			return Complex(c.Real * d, c.Imaginary * d);
-		}
-		Complex operator*(const Complex& other)const& noexcept {
-			return Complex(Real * other.Real - Imaginary * other.Imaginary, Real * other.Imaginary + Imaginary * other.Real);
-		}
-
-
-		friend Complex operator/(const Complex& c, const double d)noexcept {
-			if (Qubit_Simulation::QMath::AbsoluteValue(d) == 0.0)
-				return Complex();
-			return Complex(c.Real / d, c.Imaginary / d);
-		}
-		friend Complex operator/(const double& d, const Complex& c)noexcept {
-			if (Qubit_Simulation::QMath::IsZero(c))
-				return Complex();
-			return Complex((d * c.Real) / (c.Real * c.Real + c.Imaginary * c.Imaginary),
-				(-d * c.Imaginary) / (c.Real * c.Real + c.Imaginary * c.Imaginary));
-		}
-		Complex operator/(const Complex& other)const& noexcept {
-			if (Qubit_Simulation::QMath::IsZero(other))
-				return Complex();
-			return Complex((Real * other.Real + Imaginary * other.Imaginary) / (other.Real * other.Real + other.Imaginary * other.Imaginary),
-				(Imaginary * other.Real - Real * other.Imaginary) / (other.Real * other.Real + other.Imaginary * other.Imaginary));
-		}
-
-		inline void InputComplex() {
-
-			std::cin >> Real >> Imaginary;
-
-		}
-		static inline void OutputComplex(const Complex& C) {
-
-			std::cout << C.Real << ',' << C.Imaginary;
-
-		}
+		data = Result;
 
 	};
+	Matrix(const std::vector<std::vector<Complex>>& A) :data(A) {};
 
-	struct Matrix {
+	std::vector<Complex>& operator[](const int x) { return data[x]; };
+	const std::vector<Complex>& operator[](const int x)const { return data[x]; };
 
-	public:
+	bool IsMatrix() const {
 
-		std::vector<std::vector<Complex>> data = { {} };
+		if (data.size() == 0)
+			return 0;
 
-		Matrix() :data({ {} }) {};
-		Matrix(const std::vector<double>& A) {
-
-			std::vector<std::vector<Complex>> Result(1, std::vector<Complex>(A.size()));
-
-			for (int y = 0; y<int(A.size()); y++)
-				Result[0][y] = Complex(A[y]);
-
-			data = Result;
-
-		};
-		Matrix(const std::vector<Complex>& A) :data({ A }) {};
-		Matrix(const std::vector<std::vector<double>>& A) {
-
-			if (A.size() == 0)
-				data = { {} };
-
-			std::vector<std::vector<Complex>> Result(A.size(), std::vector<Complex>(A[0].size()));
-
-			for (int x = 0; x<int(A.size()); x++)
-				for (int y = 0; y<int(A[x].size()); y++)
-					Result[x][y] = Complex(A[x][y]);
-
-			data = Result;
-
-		};
-		Matrix(const std::vector<std::vector<Complex>>& A) :data(A) {};
-
-		std::vector<Complex>& operator[](const int x) { return data[x]; };
-		const std::vector<Complex>& operator[](const int x)const { return data[x]; };
-
-		bool IsMatrix() const {
-
-			if (data.size() == 0)
+		int Column = data[0].size();
+		for (int x = 0; x<int(data.size()); x++)
+			if (int(data[x].size()) != Column)
 				return 0;
 
-			int Column = data[0].size();
-			for (int x = 0; x<int(data.size()); x++)
-				if (int(data[x].size()) != Column)
+		return 1;
+
+	}
+	bool IsSquareMatrix() const {
+
+		return (IsMatrix() && data.size() == data[0].size());
+
+	}
+
+	Matrix operator+(const Matrix& other)const& noexcept {
+
+		if (!IsMatrix() || !other.IsMatrix())
+			return {};
+
+		if ((data.size() != other.data.size()) || (data.size() == 0))
+			return {};
+
+		if (data[0].size() != other.data[0].size())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(data.size(), std::vector<Complex>(data[0].size()));
+		for (int x = 0; x<int(Result.size()); x++)
+			for (int y = 0; y<int(Result[x].size()); y++)
+				Result[x][y] = data[x][y] + other.data[x][y];
+
+		return Matrix(Result);
+
+	}
+	friend Matrix operator+(const Matrix& A, const std::vector<std::vector<double>>& B) {
+		return A + Matrix(B);
+	}
+	friend Matrix operator+(const std::vector<std::vector<double>>& B, const Matrix& A) {
+		return Matrix(B) + A;
+	}
+
+	Matrix operator-(const Matrix& other)const& noexcept {
+
+		if (!IsMatrix() || !other.IsMatrix())
+			return {};
+
+		if ((data.size() != other.data.size()) || (data.size() == 0))
+			return {};
+
+		if (data[0].size() != other.data[0].size())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(data.size(), std::vector<Complex>(data[0].size()));
+		for (int x = 0; x<int(Result.size()); x++)
+			for (int y = 0; y<int(Result[x].size()); y++)
+				Result[x][y] = data[x][y] - other.data[x][y];
+
+		return Matrix(Result);
+
+	}
+	friend Matrix operator-(const Matrix& A, const std::vector<std::vector<double>>& B) {
+		return A - Matrix(B);
+	}
+	friend Matrix operator-(const std::vector<std::vector<double>>& B, const Matrix& A) {
+		return Matrix(B) - A;
+	}
+
+
+	friend Matrix operator*(const Matrix& A, const double Scalar)noexcept {
+
+		if (!A.IsMatrix())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
+		for (int x = 0; x<int(Result.size()); x++)
+			for (int y = 0; y<int(Result[x].size()); y++)
+				Result[x][y] = A.data[x][y] * Scalar;
+
+		return Matrix(Result);
+
+	}
+	friend Matrix operator*(const double Scalar, const Matrix& A)noexcept {
+
+		return A * Scalar;
+
+	}
+	friend Matrix operator*(const Matrix& A, const Complex& Scalar)noexcept {
+
+		if (!A.IsMatrix())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
+		for (int x = 0; x<int(Result.size()); x++)
+			for (int y = 0; y<int(Result[x].size()); y++)
+				Result[x][y] = A.data[x][y] * Scalar;
+
+		return Matrix(Result);
+
+	}
+	friend Matrix operator*(const Complex& Scalar, const Matrix& A)noexcept {
+
+		return A * Scalar;
+
+	}
+	Matrix operator*(const Matrix& other)const& noexcept {
+
+		if (!IsMatrix() || !other.IsMatrix())
+			return {};
+
+		if (data[0].size() != other.data.size())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(data.size(), std::vector<Complex>(other.data[0].size()));
+		for (int Leftx = 0; Leftx<int(data.size()); Leftx++)
+			for (int Righty = 0; Righty<int(other.data[0].size()); Righty++) {
+
+				Complex sum = Complex(0);
+				for (int count = 0; count<int(data[0].size()); count++)
+					sum = sum + (data[Leftx][count] * other[count][Righty]);
+
+				Result[Leftx][Righty] = sum;
+
+			}
+
+		return Matrix(Result);
+
+	}
+	friend Matrix operator*(const Matrix& A, const std::vector<std::vector<double>> B)noexcept {
+
+		return A * Matrix(B);
+
+	}
+	friend Matrix operator*(const std::vector<std::vector<double>> B, const Matrix& A)noexcept {
+
+		return Matrix(B) * A;
+
+	}
+
+	friend Matrix operator/(const Matrix& A, const double Scalar)noexcept {
+
+		if (!A.IsMatrix())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
+		for (int x = 0; x<int(Result.size()); x++)
+			for (int y = 0; y<int(Result[x].size()); y++)
+				Result[x][y] = A.data[x][y] / Scalar;
+
+		return Matrix(Result);
+
+	}
+	friend Matrix operator/(const Matrix& A, const Complex& Scalar)noexcept {
+
+		if (!A.IsMatrix())
+			return {};
+
+		std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
+		for (int x = 0; x<int(Result.size()); x++)
+			for (int y = 0; y<int(Result[x].size()); y++)
+				Result[x][y] = A.data[x][y] / Scalar;
+
+		return Matrix(Result);
+
+	}
+
+	inline void InputMatrix() {
+
+		int Row, Column;
+		std::cout << "The number of the Row and the Column" << std::endl;
+		std::cin >> Row >> Column;
+
+		data = std::vector<std::vector<Complex>>(Row, std::vector<Complex>(Column, Complex()));
+		for (int x = 0; x < Row; x++)
+			for (int y = 0; y < Column; y++)
+				data[x][y].InputComplex();
+
+	}
+	static inline void OutputMatrix(const Matrix& A) {
+
+		if (!A.IsMatrix())
+			return;
+
+		for (int x = 0; x<int(A.data.size()); x++) {
+			for (int y = 0; y<int(A[x].size()); y++)
+				Complex::OutputComplex(A[x][y]), std::cout << ' ' << ' ';
+			std::cout << std::endl;
+		}
+
+		std::cout << std::endl;
+
+	}
+
+};
+
+class QMath {
+
+public:
+
+	static inline bool IsZero(const Complex& C) {
+
+		return ((AbsoluteValue(C.Real) < Double_Epsilon) && (AbsoluteValue(C.Imaginary) < Double_Epsilon));
+
+	}
+
+	static inline double AbsoluteValue(const double& D) {
+
+		return (D > 0 ? D : -D);
+
+	}
+
+	static inline long long int AbsoluteValue(const FixedComplex& C) {
+
+		int128_t Result = ((int128_t)C.Real * C.Real + (int128_t)C.Imaginary * C.Imaginary);
+
+		return NewtonSqrt(Result);
+
+	}
+
+	static inline double AbsoluteValue(const Complex& C) {
+		return sqrt((C.Real * C.Real) + (C.Imaginary * C.Imaginary));
+	}
+
+	static inline long long int NewtonSqrt(const int128_t input) {
+
+		if (input == 0)
+			return 0;
+
+		int128_t Result = input;
+		int128_t x = (Result + 1) / 2;
+
+		while (x < Result) {
+
+			Result = x;
+			x = (Result + input / Result) / 2;
+
+		}
+
+		return static_cast<long long int>(Result);
+
+	}
+
+	static inline Complex Conjugate(const Complex& C) {
+
+		return Complex(C.Real, -C.Imaginary);
+
+	}
+
+	static inline bool IsSameMatrix(const Matrix& Matrix1, const Matrix& Matrix2) {
+
+
+		if (Matrix1.data.size() != Matrix2.data.size() || !Matrix1.IsMatrix() || !Matrix2.IsMatrix())
+			return 0;
+
+		if (Matrix1[0].size() != Matrix2[0].size())
+			return 0;
+
+		for (int x = 0; x<int(Matrix1.data.size()); x++)
+			for (int y = 0; y<int(Matrix1[x].size()); y++)
+				if (!IsZero(Matrix1[x][y] - Matrix2[x][y]))
 					return 0;
 
-			return 1;
+		return 1;
 
-		}
-		bool IsSquareMatrix() const {
+	}
 
-			return (IsMatrix() && data.size() == data[0].size());
+	static inline bool IsDiagonalMatrix(const Matrix& A) {
 
-		}
+		if (!A.IsSquareMatrix())
+			return 0;
 
-		Matrix operator+(const Matrix& other)const& noexcept {
-
-			if (!IsMatrix() || !other.IsMatrix())
-				return {};
-
-			if ((data.size() != other.data.size()) || (data.size() == 0))
-				return {};
-
-			if (data[0].size() != other.data[0].size())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(data.size(), std::vector<Complex>(data[0].size()));
-			for (int x = 0; x<int(Result.size()); x++)
-				for (int y = 0; y<int(Result[x].size()); y++)
-					Result[x][y] = data[x][y] + other.data[x][y];
-
-			return Matrix(Result);
-
-		}
-		friend Matrix operator+(const Matrix& A, const std::vector<std::vector<double>>& B) {
-			return A + Matrix(B);
-		}
-		friend Matrix operator+(const std::vector<std::vector<double>>& B, const Matrix& A) {
-			return Matrix(B) + A;
-		}
-
-		Matrix operator-(const Matrix& other)const& noexcept {
-
-			if (!IsMatrix() || !other.IsMatrix())
-				return {};
-
-			if ((data.size() != other.data.size()) || (data.size() == 0))
-				return {};
-
-			if (data[0].size() != other.data[0].size())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(data.size(), std::vector<Complex>(data[0].size()));
-			for (int x = 0; x<int(Result.size()); x++)
-				for (int y = 0; y<int(Result[x].size()); y++)
-					Result[x][y] = data[x][y] - other.data[x][y];
-
-			return Matrix(Result);
-
-		}
-		friend Matrix operator-(const Matrix& A, const std::vector<std::vector<double>>& B) {
-			return A - Matrix(B);
-		}
-		friend Matrix operator-(const std::vector<std::vector<double>>& B, const Matrix& A) {
-			return Matrix(B) - A;
-		}
-
-
-		friend Matrix operator*(const Matrix& A, const double Scalar)noexcept {
-
-			if (!A.IsMatrix())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
-			for (int x = 0; x<int(Result.size()); x++)
-				for (int y = 0; y<int(Result[x].size()); y++)
-					Result[x][y] = A.data[x][y] * Scalar;
-
-			return Matrix(Result);
-
-		}
-		friend Matrix operator*(const double Scalar, const Matrix& A)noexcept {
-
-			return A * Scalar;
-
-		}
-		friend Matrix operator*(const Matrix& A, const Complex& Scalar)noexcept {
-
-			if (!A.IsMatrix())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
-			for (int x = 0; x<int(Result.size()); x++)
-				for (int y = 0; y<int(Result[x].size()); y++)
-					Result[x][y] = A.data[x][y] * Scalar;
-
-			return Matrix(Result);
-
-		}
-		friend Matrix operator*(const Complex& Scalar, const Matrix& A)noexcept {
-
-			return A * Scalar;
-
-		}
-		Matrix operator*(const Matrix& other)const& noexcept {
-
-			if (!IsMatrix() || !other.IsMatrix())
-				return {};
-
-			if (data[0].size() != other.data.size())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(data.size(), std::vector<Complex>(other.data[0].size()));
-			for (int Leftx = 0; Leftx<int(data.size()); Leftx++)
-				for (int Righty = 0; Righty<int(other.data[0].size()); Righty++) {
-
-					Complex sum = Complex(0);
-					for (int count = 0; count<int(data[0].size()); count++)
-						sum = sum + (data[Leftx][count] * other[count][Righty]);
-
-					Result[Leftx][Righty] = sum;
-
-				}
-
-			return Matrix(Result);
-
-		}
-		friend Matrix operator*(const Matrix& A, const std::vector<std::vector<double>> B)noexcept {
-
-			return A * Matrix(B);
-
-		}
-		friend Matrix operator*(const std::vector<std::vector<double>> B, const Matrix& A)noexcept {
-
-			return Matrix(B) * A;
-
-		}
-
-		friend Matrix operator/(const Matrix& A, const double Scalar)noexcept {
-
-			if (!A.IsMatrix())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
-			for (int x = 0; x<int(Result.size()); x++)
-				for (int y = 0; y<int(Result[x].size()); y++)
-					Result[x][y] = A.data[x][y] / Scalar;
-
-			return Matrix(Result);
-
-		}
-		friend Matrix operator/(const Matrix& A, const Complex& Scalar)noexcept {
-
-			if (!A.IsMatrix())
-				return {};
-
-			std::vector<std::vector<Complex>> Result(A.data.size(), std::vector<Complex>(A.data[0].size()));
-			for (int x = 0; x<int(Result.size()); x++)
-				for (int y = 0; y<int(Result[x].size()); y++)
-					Result[x][y] = A.data[x][y] / Scalar;
-
-			return Matrix(Result);
-
-		}
-
-		inline void InputMatrix() {
-
-			int Row, Column;
-			std::cout << "The number of the Row and the Column" << std::endl;
-			std::cin >> Row >> Column;
-
-			data = std::vector<std::vector<Complex>>(Row, std::vector<Complex>(Column, Complex()));
-			for (int x = 0; x < Row; x++)
-				for (int y = 0; y < Column; y++)
-					data[x][y].InputComplex();
-
-		}
-		static inline void OutputMatrix(const Matrix& A) {
-
-			if (!A.IsMatrix())
-				return;
-
-			for (int x = 0; x<int(A.data.size()); x++) {
-				for (int y = 0; y<int(A[x].size()); y++)
-					Complex::OutputComplex(A[x][y]), std::cout << ' ' << ' ';
-				std::cout << std::endl;
-			}
-
-			std::cout << std::endl;
-
-		}
-
-	};
-
-
-	class QMath {
-
-	public:
-
-		static inline bool IsZero(const Complex& C) {
-
-			return ((AbsoluteValue(C.Real) < Double_Epsilon) && (AbsoluteValue(C.Imaginary) < Double_Epsilon));
-
-		}
-
-		static inline double AbsoluteValue(const double& D) {
-
-			return (D > 0 ? D : -D);
-
-		}
-
-		static inline long long int AbsoluteValue(const FixedComplex& C) {
-
-			int128_t Result = ((int128_t)C.Real * C.Real + (int128_t)C.Imaginary * C.Imaginary);
-
-			return NewtonSqrt(Result);
-
-		}
-
-		static inline double AbsoluteValue(const Complex& C) {
-			return sqrt((C.Real * C.Real) + (C.Imaginary * C.Imaginary));
-		}
-
-		static inline long long int NewtonSqrt(const int128_t input) {
-
-			if (input == 0)
-				return 0;
-
-			int128_t Result = input;
-			int128_t x = (Result + 1) / 2;
-
-			while (x < Result) {
-
-				Result = x;
-				x = (Result + input / Result) / 2;
-
-			}
-
-			return static_cast<long long int>(Result);
-
-		}
-
-		static inline Complex Conjugate(const Complex& C) {
-
-			return Complex(C.Real, -C.Imaginary);
-
-		}
-
-
-		static inline bool IsSameMatrix(const Matrix& Matrix1, const Matrix& Matrix2) {
-
-
-			if (Matrix1.data.size() != Matrix2.data.size() || !Matrix1.IsMatrix() || !Matrix2.IsMatrix())
-				return 0;
-
-			if (Matrix1[0].size() != Matrix2[0].size())
-				return 0;
-
-			for (int x = 0; x<int(Matrix1.data.size()); x++)
-				for (int y = 0; y<int(Matrix1[x].size()); y++)
-					if (!IsZero(Matrix1[x][y] - Matrix2[x][y]))
-						return 0;
-
-			return 1;
-
-		}
-
-		static inline bool IsDiagonalMatrix(const Matrix& A) {
-
-			if (!A.IsSquareMatrix())
-				return 0;
-
-			for (int x = 0; x<int(A.data.size()); x++)
-				for (int y = 0; y<int(A[0].size()); y++)
-					if (x != y && !IsZero(A[x][y]))
-						return 0;
-
-			return 1;
-
-		}
-
-		static inline double NormOfVector(const std::vector<Complex>& Vector) {
-
-			double Sum = 0;
-			for (int count = 0; count<int(Vector.size()); count++)
-				Sum += (Vector[count].Real * Vector[count].Real) + (Vector[count].Imaginary * Vector[count].Imaginary);
-
-			return sqrt(Sum);
-
-		}
-
-		static inline std::vector<Complex> ScalarMultiplicationVector(const Complex& Scalar, const std::vector<Complex>& Vector) {
-
-			std::vector<Complex> Result(Vector.size());
-			for (int count = 0; count<int(Vector.size()); count++)
-				Result[count] = Vector[count] * Scalar;
-
-			return Result;
-
-		}
-
-		static inline Matrix GenerateReflectionMatrix(const std::vector<Complex>& NormalVector) {
-
-			return GenerateUnitMatrix(NormalVector.size()) - ((2 / DotProduct(NormalVector, NormalVector)) * OuterProduct(NormalVector, NormalVector));
-
-		}
-
-		static inline Complex DotProduct(const std::vector<Complex>& Vector1, const std::vector<Complex>& Vector2) {
-
-			if (Vector1.size() != Vector2.size())
-				return Complex();
-
-			Complex Sum = Complex();
-			for (int count = 0; count<int(Vector1.size()); count++)
-				Sum = Sum + Conjugate(Vector1[count]) * Vector2[count];
-
-			return Sum;
-
-		}
-
-		static inline Matrix OuterProduct(const std::vector<Complex>& Vector1, const std::vector<Complex>& Vector2) {
-
-			if (Vector1.size() != Vector2.size())
-				return {};
-
-			return Matrix(Vector1) * TransposeMatrix(Matrix(Vector2));
-
-		}
-
-		static Matrix GenerateUnitMatrix(const int& order) {
-
-			Matrix UnitMatrix = Matrix(std::vector<std::vector<Complex>>(order, std::vector<Complex>(order, Complex())));
-			for (int count = 0; count < order; count++)
-				UnitMatrix[count][count] = Complex(1);
-
-			return UnitMatrix;
-
-		}
-
-		static inline void AdditionOneRowToAnotherRow(const Complex& Scalar, const int& AddedRow, const int& Row, Matrix& A) {
-
-			if (!A.IsMatrix())
-				return;
-
-			if (AddedRow >= int(A.data.size()) || AddedRow < 0 || Row >= int(A.data.size()) || Row < 0 || Row == AddedRow)
-				return;
-
+		for (int x = 0; x<int(A.data.size()); x++)
 			for (int y = 0; y<int(A[0].size()); y++)
-				A[Row][y] = A[Row][y] + A[AddedRow][y] * Scalar;
+				if (x != y && !IsZero(A[x][y]))
+					return 0;
+
+		return 1;
+
+	}
+
+	static inline double NormOfVector(const std::vector<Complex>& Vector) {
+
+		double Sum = 0;
+		for (int count = 0; count<int(Vector.size()); count++)
+			Sum += (Vector[count].Real * Vector[count].Real) + (Vector[count].Imaginary * Vector[count].Imaginary);
+
+		return sqrt(Sum);
+
+	}
+
+	static inline std::vector<Complex> ScalarMultiplicationVector(const Complex& Scalar, const std::vector<Complex>& Vector) {
+
+		std::vector<Complex> Result(Vector.size());
+		for (int count = 0; count<int(Vector.size()); count++)
+			Result[count] = Vector[count] * Scalar;
+
+		return Result;
+
+	}
+
+	static inline Matrix GenerateReflectionMatrix(const std::vector<Complex>& NormalVector) {
+
+		return GenerateUnitMatrix(NormalVector.size()) - ((2 / DotProduct(NormalVector, NormalVector)) * OuterProduct(NormalVector, NormalVector));
+
+	}
+
+	static inline Complex DotProduct(const std::vector<Complex>& Vector1, const std::vector<Complex>& Vector2) {
+
+		if (Vector1.size() != Vector2.size())
+			return Complex();
+
+		Complex Sum = Complex();
+		for (int count = 0; count<int(Vector1.size()); count++)
+			Sum = Sum + Conjugate(Vector1[count]) * Vector2[count];
+
+		return Sum;
+
+	}
+
+	static inline Matrix OuterProduct(const std::vector<Complex>& Vector1, const std::vector<Complex>& Vector2) {
+
+		if (Vector1.size() != Vector2.size())
+			return {};
+
+		return Matrix(Vector1) * TransposeMatrix(Matrix(Vector2));
+
+	}
+
+	static Matrix GenerateUnitMatrix(const int& order) {
+
+		Matrix UnitMatrix = Matrix(std::vector<std::vector<Complex>>(order, std::vector<Complex>(order, Complex())));
+		for (int count = 0; count < order; count++)
+			UnitMatrix[count][count] = Complex(1);
+
+		return UnitMatrix;
+
+	}
+
+	static inline void AdditionOneRowToAnotherRow(const Complex& Scalar, const int& AddedRow, const int& Row, Matrix& A) {
+
+		if (!A.IsMatrix())
+			return;
+
+		if (AddedRow >= int(A.data.size()) || AddedRow < 0 || Row >= int(A.data.size()) || Row < 0 || Row == AddedRow)
+			return;
+
+		for (int y = 0; y<int(A[0].size()); y++)
+			A[Row][y] = A[Row][y] + A[AddedRow][y] * Scalar;
+
+	}
+
+	static inline void MultipleOfARow(const Complex& Scalar, const int& Row, Matrix& A) {
+
+		if (!A.IsMatrix())
+			return;
+
+		if (Row >= int(A.data.size()) || Row < 0 || (Scalar.Real == 0 && Scalar.Imaginary == 0))
+			return;
+
+		for (int y = 0; y<int(A[Row].size()); y++)
+			A[Row][y] = A[Row][y] * Scalar;
+
+	}
+
+	static inline void InterchangeOfTwoRow(const std::pair<int, int>& InterchangeRow, Matrix& A) {
+
+		if (!A.IsMatrix())
+			return;
+
+		if (InterchangeRow.first >= int(A.data.size()) || InterchangeRow.first < 0 || InterchangeRow.second >= int(A.data.size()) || InterchangeRow.second < 0)
+			return;
+
+		std::swap(A[InterchangeRow.first], A[InterchangeRow.second]);
+
+	}
+
+	static inline Matrix HermitianTransposeMatrix(Matrix A) {
+
+		if (!A.IsSquareMatrix())
+			return Matrix();
+
+		for (int x = 0; x<int(A.data.size()); x++) {
+
+			A[x][x] = Conjugate(A[x][x]);
+
+			for (int y = 0; y < x; y++)
+				std::swap(A[x][y], A[y][x]),
+				A[x][y] = Conjugate(A[x][y]),
+				A[y][x] = Conjugate(A[y][x]);
 
 		}
 
-		static inline void MultipleOfARow(const Complex& Scalar, const int& Row, Matrix& A) {
+		return A;
 
-			if (!A.IsMatrix())
-				return;
+	}
 
-			if (Row >= int(A.data.size()) || Row < 0 || (Scalar.Real == 0 && Scalar.Imaginary == 0))
-				return;
+	static inline Matrix TransposeMatrix(Matrix A) {
 
-			for (int y = 0; y<int(A[Row].size()); y++)
-				A[Row][y] = A[Row][y] * Scalar;
+		if (!A.IsSquareMatrix())
+			return Matrix();
 
-		}
+		for (int x = 0; x<int(A.data.size()); x++)
+			for (int y = 0; y < x; y++)
+				std::swap(A[x][y], A[y][x]);
 
-		static inline void InterchangeOfTwoRow(const std::pair<int, int>& InterchangeRow, Matrix& A) {
+		return A;
 
-			if (!A.IsMatrix())
-				return;
+	}
 
-			if (InterchangeRow.first >= int(A.data.size()) || InterchangeRow.first < 0 || InterchangeRow.second >= int(A.data.size()) || InterchangeRow.second < 0)
-				return;
+	static Complex DeterminantsOfMatrix(const Matrix& A) {
 
-			std::swap(A[InterchangeRow.first], A[InterchangeRow.second]);
+		if (!A.IsSquareMatrix())
+			return Complex();
 
-		}
+		if (A.data.size() == 1)
+			return A[0][0];
 
-		static inline Matrix HermitianTransposeMatrix(Matrix A) {
+		if (A.data.size() == 2)
+			return A[0][0] * A[1][1] - A[0][1] * A[1][0];
 
-			if (!A.IsSquareMatrix())
-				return Matrix();
+		Complex Sum = Complex();
 
-			for (int x = 0; x<int(A.data.size()); x++) {
+		for (int y = 0; y<int(A[0].size()); y++) {
 
-				A[x][x] = Conjugate(A[x][x]);
+			Matrix ReducedMatrix = Matrix(std::vector<std::vector<Complex>>(A.data.size() - 1));
+			Complex now = A[0][y];
 
-				for (int y = 0; y < x; y++)
-					std::swap(A[x][y], A[y][x]),
-					A[x][y] = Conjugate(A[x][y]),
-					A[y][x] = Conjugate(A[y][x]);
+			for (int x = 1; x<int(A.data.size()); x++)
+				for (int Column = 0; Column<int(A[0].size()); Column++)
+					if (y != Column)
+						ReducedMatrix[x - 1].push_back(A[x][Column]);
 
-			}
+			if (y % 2 == 1)
+				now = now - 1;
 
-			return A;
-
-		}
-
-		static inline Matrix TransposeMatrix(Matrix A) {
-
-			if (!A.IsSquareMatrix())
-				return Matrix();
-
-			for (int x = 0; x<int(A.data.size()); x++)
-				for (int y = 0; y < x; y++)
-					std::swap(A[x][y], A[y][x]);
-
-			return A;
+			Sum = Sum + now * DeterminantsOfMatrix(ReducedMatrix);
 
 		}
 
-		static Complex DeterminantsOfMatrix(const Matrix& A) {
+		return Sum;
 
-			if (!A.IsSquareMatrix())
-				return Complex();
+	}
 
-			if (A.data.size() == 1)
-				return A[0][0];
+	static Matrix GenerateInverseMatrix(const Matrix& A) {
 
-			if (A.data.size() == 2)
-				return A[0][0] * A[1][1] - A[0][1] * A[1][0];
+		if (!A.IsSquareMatrix())
+			return {};
 
-			Complex Sum = Complex();
+		if (IsZero(DeterminantsOfMatrix(A)) || A[0].size() == 0)
+			return {};
 
-			for (int y = 0; y<int(A[0].size()); y++) {
+		Matrix Now = A, Inverse = GenerateUnitMatrix(A.data.size());
+		for (int y = 0; y<int(Now.data.size()); y++) {
 
-				Matrix ReducedMatrix = Matrix(std::vector<std::vector<Complex>>(A.data.size() - 1));
-				Complex now = A[0][y];
-
-				for (int x = 1; x<int(A.data.size()); x++)
-					for (int Column = 0; Column<int(A[0].size()); Column++)
-						if (y != Column)
-							ReducedMatrix[x - 1].push_back(A[x][Column]);
-
-				if (y % 2 == 1)
-					now = now - 1;
-
-				Sum = Sum + now * DeterminantsOfMatrix(ReducedMatrix);
-
-			}
-
-			return Sum;
-
-		}
-
-		static Matrix GenerateInverseMatrix(const Matrix& A) {
-
-			if (!A.IsSquareMatrix())
-				return {};
-
-			if (IsZero(DeterminantsOfMatrix(A)) || A[0].size() == 0)
-				return {};
-
-			Matrix Now = A, Inverse = GenerateUnitMatrix(A.data.size());
-			for (int y = 0; y<int(Now.data.size()); y++) {
-
-				if (IsZero(Now[y][y])) {
-
-					for (int x = 0; x<int(Now.data.size()); x++)
-						if (!IsZero(Now[x][y])) {
-							InterchangeOfTwoRow({ x,y }, Now);
-							InterchangeOfTwoRow({ x,y }, Inverse);
-							break;
-						}
-
-				}
-
-				MultipleOfARow(1 / Now[y][y], y, Inverse);
-				MultipleOfARow(1 / Now[y][y], y, Now);
+			if (IsZero(Now[y][y])) {
 
 				for (int x = 0; x<int(Now.data.size()); x++)
-					if (x != y && !IsZero(Now[x][y])) {
-						AdditionOneRowToAnotherRow(Complex() - Now[x][y], y, x, Inverse);
-						AdditionOneRowToAnotherRow(Complex() - Now[x][y], y, x, Now);
+					if (!IsZero(Now[x][y])) {
+						InterchangeOfTwoRow({ x,y }, Now);
+						InterchangeOfTwoRow({ x,y }, Inverse);
+						break;
 					}
 
 			}
 
-			return Inverse;
-
-		}
-
-		/*static Matrix GenerateQuantumLogicGate(const Matrix& A) {
-
-		}*/
-
-		static Matrix GenerateDiagonalMatrix(const Matrix& A) {
-
-			if (!A.IsSquareMatrix() || A.data.size() == 0)
-				return {};
-
-			if (A.data.size() == 1)
-				return A;
-
-			Matrix Now = A, Front = Matrix();
-			std::pair<Matrix, Matrix> QR;
-			while (!IsDiagonalMatrix(Now) && !IsSameMatrix(Front, Now)) {
-
-				Front = Now;
-				QR = GenerateQRFactorization(Now);
-				Now = QR.second * QR.first;
-
-			}
+			MultipleOfARow(1 / Now[y][y], y, Inverse);
+			MultipleOfARow(1 / Now[y][y], y, Now);
 
 			for (int x = 0; x<int(Now.data.size()); x++)
-				for (int y = 0; y<int(Now[x].size()); y++)
-					if (x != y)
-						Now[x][y] = Complex();
-
-			return Now;
-
-		}
-
-		static std::pair<Matrix, Matrix> GenerateQRFactorization(const Matrix& A) {
-
-			if (!A.IsSquareMatrix() || A.data.size() == 0 || A.data.size() == 1)
-				return { {},{} };
-
-
-			Matrix Q = GenerateUnitMatrix(A.data.size()), R = A;
-			for (int y = 0; y<int(A.data.size() - 1); y++) {
-
-				std::vector<Complex> Set(A.data.size() - y);
-				for (int x = y; x<int(A.data.size()); x++)
-					Set[x - y] = R[x][y];
-
-
-				Set[0] = Set[0] - NormOfVector(Set);
-				Set = ScalarMultiplicationVector(Complex(1 / NormOfVector(Set)), Set);
-				Matrix Caculate = GenerateReflectionMatrix(Set);
-				Caculate = GenerateBlockEmbeddingForHouseholder(A.data.size(), Caculate);
-
-				Q = Q * Caculate;
-				R = Caculate * R;
-
-			}
-
-			return { Q,R };
+				if (x != y && !IsZero(Now[x][y])) {
+					AdditionOneRowToAnotherRow(Complex() - Now[x][y], y, x, Inverse);
+					AdditionOneRowToAnotherRow(Complex() - Now[x][y], y, x, Now);
+				}
 
 		}
 
-		static Matrix GenerateBlockEmbeddingForHouseholder(const int& order, const Matrix& A) {
+		return Inverse;
 
-			if (!A.IsSquareMatrix() || int(A.data.size()) > order)
-				return {};
+	}
 
-			if (order == int(A.data.size()))
-				return A;
+	/*static Matrix GenerateQuantumLogicGate(const Matrix& A) {
 
-			Matrix Result = Matrix(std::vector<std::vector<Complex>>(order, std::vector<Complex>(order, Complex())));
-			for (int count = 0; count < order; count++)
-				Result[count][count] = Complex(1);
+	}*/
 
-			for (int x = order - A.data.size(); x < order; x++)
-				for (int y = order - A.data.size(); y < order; y++)
-					Result[x][y] = A[x - order + A.data.size()][y - order + A.data.size()];
+	static Matrix GenerateDiagonalMatrix(const Matrix& A) {
 
-			return Result;
+		if (!A.IsSquareMatrix() || A.data.size() == 0)
+			return {};
+
+		if (A.data.size() == 1)
+			return A;
+
+		Matrix Now = A, Front = Matrix();
+		std::pair<Matrix, Matrix> QR;
+		while (!IsDiagonalMatrix(Now) && !IsSameMatrix(Front, Now)) {
+
+			Front = Now;
+			QR = GenerateQRFactorization(Now);
+			Now = QR.second * QR.first;
 
 		}
 
+		for (int x = 0; x<int(Now.data.size()); x++)
+			for (int y = 0; y<int(Now[x].size()); y++)
+				if (x != y)
+					Now[x][y] = Complex();
+
+		return Now;
+
+	}
+
+	static std::pair<Matrix, Matrix> GenerateQRFactorization(const Matrix& A) {
+
+		if (!A.IsSquareMatrix() || A.data.size() == 0 || A.data.size() == 1)
+			return { {},{} };
+
+
+		Matrix Q = GenerateUnitMatrix(A.data.size()), R = A;
+		for (int y = 0; y<int(A.data.size() - 1); y++) {
+
+			std::vector<Complex> Set(A.data.size() - y);
+			for (int x = y; x<int(A.data.size()); x++)
+				Set[x - y] = R[x][y];
+
+
+			Set[0] = Set[0] - NormOfVector(Set);
+			Set = ScalarMultiplicationVector(Complex(1 / NormOfVector(Set)), Set);
+			Matrix Caculate = GenerateReflectionMatrix(Set);
+			Caculate = GenerateBlockEmbeddingForHouseholder(A.data.size(), Caculate);
+
+			Q = Q * Caculate;
+			R = Caculate * R;
+
+		}
+
+		return { Q,R };
+
+	}
+
+	static Matrix GenerateBlockEmbeddingForHouseholder(const int& order, const Matrix& A) {
+
+		if (!A.IsSquareMatrix() || int(A.data.size()) > order)
+			return {};
+
+		if (order == int(A.data.size()))
+			return A;
+
+		Matrix Result = Matrix(std::vector<std::vector<Complex>>(order, std::vector<Complex>(order, Complex())));
+		for (int count = 0; count < order; count++)
+			Result[count][count] = Complex(1);
+
+		for (int x = order - A.data.size(); x < order; x++)
+			for (int y = order - A.data.size(); y < order; y++)
+				Result[x][y] = A[x - order + A.data.size()][y - order + A.data.size()];
+
+		return Result;
+
+	}
 
 
 
 
-	};
+
+};
+
+class Qubit_Simulation {
+
+public:
+
+	static long long int FixedPoint(const double input) {
+
+		return static_cast<long long>(input * Fixed_Point);
+
+	}
+	static double FixedPointToDouble(const long long int input) {
+
+		double result = 1.0 * input / Fixed_Point;
+
+		return result;
+
+	}
+
 
 private:
 
