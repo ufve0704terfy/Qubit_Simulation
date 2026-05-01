@@ -1507,10 +1507,12 @@ private:
         int nq = circuit.num_qubits;
         const int CW = 9;
 
+        // 更新：加入 is_exclusive 標記
         struct Slot {
             std::vector<bool>               occ;
             std::vector<CircuitInstruction> cell;
-            Slot(int n) : occ(n, false), cell(n) {}
+            bool                            is_exclusive;
+            Slot(int n) : occ(n, false), cell(n), is_exclusive(false) {}
         };
         std::vector<Slot> slots;
 
@@ -1522,30 +1524,48 @@ private:
             int si = -1;
 
             if (!standalone && !tgts.empty()) {
+                bool is_multi_qubit = (tgts.size() >= 2);
                 int max_s = -1;
-                // 找出這些目標 qubit 最後被佔用的 Slot (時間點)
-                for (int q : tgts) {
-                    for (int s = (int)slots.size() - 1; s >= 0; s--) {
-                        if (slots[s].occ[q]) {
-                            max_s = std::max(max_s, s);
-                            break; // 找到該 qubit 最近被佔用的 slot 即可
+
+                if (is_multi_qubit) {
+                    // 若是多量子邏輯閘：強制排在現有所有 Slot 的下一個，不與任何人並列
+                    max_s = (int)slots.size() - 1;
+                }
+                else {
+                    // 若是單量子邏輯閘：找出目標 qubit 被佔用的最後一個 Slot，
+                    // 同時遇到被多量子邏輯閘「獨佔 (is_exclusive)」的 Slot 時視為一堵牆，不能往前插隊。
+                    for (int q : tgts) {
+                        for (int s = (int)slots.size() - 1; s >= 0; s--) {
+                            if (slots[s].occ[q] || slots[s].is_exclusive) {
+                                max_s = std::max(max_s, s);
+                                break;
+                            }
                         }
                     }
                 }
-                // 必須排在最後被佔用之後的下一個 Slot，確保因果順序
+
+                // 決定要放入的 Slot 索引
                 si = max_s + 1;
-            }
 
-            // 若超出現有 Slot 數量或不需要排入時間軸，則新增 Slot
-            if (si == -1 || si == (int)slots.size()) {
-                slots.push_back(Slot(nq));
-                if (si == -1) si = (int)slots.size() - 1;
-            }
+                // 若超出現有 Slot 數量，新增 Slot
+                while (si >= (int)slots.size()) {
+                    slots.push_back(Slot(nq));
+                }
 
-            for (int q : tgts) { slots[si].occ[q] = true; slots[si].cell[q] = inst; }
+                // 如果是多量子位元閘，就把這個時間點設為獨佔
+                if (is_multi_qubit) {
+                    slots[si].is_exclusive = true;
+                }
+
+                // 寫入佔用狀態與指令
+                for (int q : tgts) {
+                    slots[si].occ[q] = true;
+                    slots[si].cell[q] = inst;
+                }
+            }
         }
 
-        // ... 底下印出 T0, T1 以及 Q[x] 的邏輯維持原樣不變 ...
+        // 底下印出 T0, T1 以及 Q[x] 的邏輯維持原樣不變
         out << "\n";
         out << Pad("", 7);
         for (int s = 0; s < (int)slots.size(); s++)
