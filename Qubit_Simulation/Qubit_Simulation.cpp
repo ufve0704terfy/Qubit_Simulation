@@ -22,7 +22,7 @@ static constexpr const long long int Tolerent_Round = 1LL << 10;
  * 以2^62為縮放基準
  */
 
- // ── 閘的種類 ─────────────────────────────────────────
+
 enum class GateType {
 	Identity,
 	// 單 qubit
@@ -32,45 +32,23 @@ enum class GateType {
 	CNOT, CZ, SWAP, iSWAP, SqrtSWAP,
 	// 三 qubit
 	CCNOT, CSWAP, Deutsch,
-	// 特殊
-	Measure,
-	Custom
+	// 測量
+	Measure, Parity,
+	// 控制流
+	Conditional, Label, Goto
 };
 
-// ── 表格中一格的內容 ──────────────────────────────────
-struct GateCell {
-	GateType            type = GateType::Identity;
-	std::vector<double> params = {};   // Rx/Ry/Rz 的角度，Deutsch 的角度
-	int                 link_qubit = -1;   // 多 qubit 閘的另一個/控制 qubit
-	int                 link_qubit2 = -1;   // 三 qubit 閘的第三個 qubit
-	bool                is_primary = true; // 多 qubit 閘只由 primary 觸發執行
-	std::string         custom_name = "";   // 自訂閘名稱
+// ══════════════════════════════════════════════════════════
+// 單一指令
+// ══════════════════════════════════════════════════════════
+struct CircuitInstruction {
+	GateType                        type = GateType::Identity;
+	std::vector<int>                qubits = {};
+	double                          param = 0.0;
+	int                             expected_val = 0;    // Conditional 用
+	std::string                     label = "";   // Label / Goto 用
+	std::vector<CircuitInstruction> sub_insts = {};   // Conditional 用
 };
-
-// ── 每個 time step 執行後的快照 ───────────────────────
-struct StepSnapshot {
-	int	step;
-	// set_id → {qubit列表, 狀態向量}
-
-	std::map<int, std::pair<std::vector<int>,
-	std::vector<std::pair<double, double>>>> entangled_sets;
-
-	// qubit → 測量結果（-1 代表尚未測量）
-
-	std::map<int, int>                           measurement;
-
-	// qubit → {P(0), P(1)}
-	std::map<int, std::pair<double, double>>      probabilities;
-};
-
-// ── 整份電路的執行結果 ────────────────────────────────
-
-struct CircuitResult {
-	int                     num_qubits;
-	int                     num_steps;
-	std::vector<StepSnapshot> snapshots;   // 每個 time step 一份
-};
-
 
 class FixedComplex {
 
@@ -1192,200 +1170,6 @@ private:
 		Entangled_Qubit_Set[qubit] = &Entangled_Qubit_Set_Pointer[qubit];
 	}
 
-	void ApplySingleQubitGate(const int qubit, const GateType type, const double param = 0.0) {
-
-		if (IsQubitUnoperable(qubit)) return;
-		int q_pos = GetSituation(qubit);
-		auto& state = Entangled_Qubit_Set[qubit]->second;
-		size_t half = state.size() >> 1;
-
-		double half_rad, c, s;
-		if (type == GateType::Rx || type == GateType::Ry || type == GateType::Rz)
-			half_rad = param * Pi / 180.0 / 2.0, c = cos(half_rad), s = sin(half_rad);
-
-		for (size_t i = 0; i < half; i++) {
-
-			auto& s0 = state[BitAdd(i, q_pos, 0ULL)];
-			auto& s1 = state[BitAdd(i, q_pos, 1ULL)];
-			FixedComplex tmp;
-
-			switch (type) {
-
-				// ── Permutation ─────────────────────────────
-			case GateType::X:
-				std::swap(s0, s1);
-				break;
-
-				// ── PhaseOnly（不動 s0）────────────────────
-			case GateType::Z:
-				s1.Real = -s1.Real; s1.Imaginary = -s1.Imaginary;
-				break;
-			case GateType::S:
-				tmp = s1;
-				s1.Real = -tmp.Imaginary; s1.Imaginary = tmp.Real;
-				break;
-			case GateType::Sdg:
-				tmp = s1;
-				s1.Real = tmp.Imaginary; s1.Imaginary = -tmp.Real;
-				break;
-			case GateType::T:
-				s1 = s1 * FixedComplex(FixedPoint(Root_half), FixedPoint(Root_half));
-				break;
-			case GateType::Tdg:
-				s1 = s1 * FixedComplex(FixedPoint(Root_half), FixedPoint(-Root_half));
-				break;
-
-				// ── PhaseOnly（s0 和 s1 都動）──────────────
-			case GateType::Rz:
-				s0 = s0 * FixedComplex(FixedPoint(c), FixedPoint(-s));
-				s1 = s1 * FixedComplex(FixedPoint(c), FixedPoint(s));
-				break;
-
-				// ── FullUnitary off-diagonal（Y）───────────
-			case GateType::Y:
-				std::swap(s0, s1);
-				tmp = s0;
-				s0.Real = -tmp.Imaginary; s0.Imaginary = tmp.Real;   // × (-i)
-				tmp = s1;
-				s1.Real = tmp.Imaginary; s1.Imaginary = -tmp.Real;  // × i  (swap後再乘)
-				// 校正：Y = [[0,-i],[i,0]]
-				// swap後 s0=原s1, s1=原s0
-				// s0 × (-i), s1 × i
-				break;
-
-				// ── FullUnitary（H, Rx, Ry）─────────────────
-			case GateType::H: {
-				FixedComplex a = s0, b = s1;
-				s0 = a * FixedPoint(Root_half) + b * FixedPoint(Root_half);
-				s1 = a * FixedPoint(Root_half) + b * FixedPoint(-Root_half);
-				break;
-			}
-			case GateType::Rx: {
-				FixedComplex a = s0, b = s1;
-				s0 = a * FixedPoint(c) + b * FixedComplex(0LL, FixedPoint(-s));
-				s1 = a * FixedComplex(0LL, FixedPoint(-s)) + b * FixedPoint(c);
-				break;
-			}
-			case GateType::Ry: {
-				FixedComplex a = s0, b = s1;
-				s0 = a * FixedPoint(c) + b * FixedPoint(-s);
-				s1 = a * FixedPoint(s) + b * FixedPoint(c);
-				break;
-			}
-			default: break;
-			}
-		}
-	}
-
-	void ApplyTwoQubitGate(const int q1, const int q2, const GateType type, const double param = 0.0) {
-
-		if (IsQubitUnoperable(q1) || IsQubitUnoperable(q2) || q1 == q2) return;
-		if (Entangled_Qubit_Set[q1]->first != Entangled_Qubit_Set[q2]->first)
-			CombineEntangledQubitSet(q1, q2);
-
-		int qs1 = GetSituation(q1), qs2 = GetSituation(q2);
-		auto& state = Entangled_Qubit_Set[q1]->second;
-		size_t quarter = state.size() >> 2;
-
-		for (size_t i = 0; i < quarter; i++) {
-
-			auto& s00 = state[BitAdd(i, { {qs1,0},{qs2,0} })];
-			auto& s01 = state[BitAdd(i, { {qs1,0},{qs2,1} })];
-			auto& s10 = state[BitAdd(i, { {qs1,1},{qs2,0} })];
-			auto& s11 = state[BitAdd(i, { {qs1,1},{qs2,1} })];
-
-			switch (type) {
-
-			case GateType::CNOT:
-				std::swap(s10, s11);
-				break;
-
-			case GateType::CZ:
-				s11.Real = -s11.Real; s11.Imaginary = -s11.Imaginary;
-				break;
-
-			case GateType::SWAP:
-				std::swap(s01, s10);
-				break;
-
-			case GateType::iSWAP: {
-				std::swap(s01, s10);
-				FixedComplex tmp = s10;
-				s10.Real = -tmp.Imaginary; s10.Imaginary = tmp.Real;  // × i
-				tmp = s01;
-				s01.Real = -tmp.Imaginary; s01.Imaginary = tmp.Real;  // × i
-				break;
-			}
-			case GateType::SqrtSWAP: {
-				FixedComplex a = s01, b = s10;
-				s01 = a * FixedComplex(Fixed_Point >> 1, Fixed_Point >> 1)
-					+ b * FixedComplex(Fixed_Point >> 1, -(Fixed_Point >> 1));
-				s10 = a * FixedComplex(Fixed_Point >> 1, -(Fixed_Point >> 1))
-					+ b * FixedComplex(Fixed_Point >> 1, Fixed_Point >> 1);
-				break;
-			}
-			default: break;
-			}
-		}
-
-		std::vector<int> qubits_in_set = Entangled_Qubit_Set[q1]->first;
-
-		for(int count=0;count<qubits_in_set.size();count++)
-			ExtractSeparatedQubit(qubits_in_set[count]);
-
-	}
-
-	void ApplyThreeQubitGate(const int q1, const int q2, const int q3,
-		const GateType type, const double param = 0.0) {
-
-		if (IsQubitUnoperable(q1) || IsQubitUnoperable(q2) || IsQubitUnoperable(q3) ||
-			q1 == q2 || q1 == q3 || q2 == q3) return;
-		if (Entangled_Qubit_Set[q1]->first != Entangled_Qubit_Set[q2]->first)
-			CombineEntangledQubitSet(q1, q2);
-		if (Entangled_Qubit_Set[q1]->first != Entangled_Qubit_Set[q3]->first)
-			CombineEntangledQubitSet(q1, q3);
-
-		int qs1 = GetSituation(q1), qs2 = GetSituation(q2), qs3 = GetSituation(q3);
-		auto& state = Entangled_Qubit_Set[q1]->second;
-		size_t eighth = state.size() >> 3;
-
-		for (size_t i = 0; i < eighth; i++) {
-
-			auto& s110 = state[BitAdd(i, { {qs1,1},{qs2,1},{qs3,0} })];
-			auto& s111 = state[BitAdd(i, { {qs1,1},{qs2,1},{qs3,1} })];
-			auto& s101 = state[BitAdd(i, { {qs1,1},{qs2,0},{qs3,1} })];
-
-			switch (type) {
-
-			case GateType::CCNOT:
-				std::swap(s110, s111);
-				break;
-
-			case GateType::CSWAP:
-				std::swap(s110, s101);
-				break;
-
-			case GateType::Deutsch: {
-				double half_rad = param * Pi / 180.0 / 2.0;
-				double c = cos(half_rad), s = sin(half_rad);
-				FixedComplex a = s110, b = s111;
-				s110 = a * FixedComplex(0LL, FixedPoint(c))
-					+ b * FixedComplex(FixedPoint(s), 0LL);
-				s111 = a * FixedComplex(FixedPoint(s), 0LL)
-					+ b * FixedComplex(0LL, FixedPoint(-c));
-				break;
-			}
-			default: break;
-			}
-		}
-
-		std::vector<int> qubits_in_set = Entangled_Qubit_Set[q1]->first;
-
-		for (int count = 0; count < qubits_in_set.size(); count++)
-			ExtractSeparatedQubit(qubits_in_set[count]);
-
-	}
-
 public:
 
 	Qubit_Simulation() :Qubit_Amount(0) { Entangled_Qubit_Set.clear(); Qubit_Set_Observation.clear(); Entangled_Qubit_Set_Pointer.clear(); };
@@ -1548,6 +1332,60 @@ public:
 
 	}
 
+	int MeasureParity(std::vector<int> qubits) {
+
+		if (qubits.empty()) return -1;
+		for (int q : qubits)
+			if (IsQubitUnoperable(q)) return -1;
+
+		// 合併所有 qubit 到同一個 set
+		for (size_t i = 1; i < qubits.size(); i++)
+			if (Entangled_Qubit_Set[qubits[0]]->first != Entangled_Qubit_Set[qubits[i]]->first)
+				CombineEntangledQubitSet(qubits[0], qubits[i]);
+
+		auto& state = Entangled_Qubit_Set[qubits[0]]->second;
+
+		std::vector<int> positions;
+		for (int q : qubits)
+			positions.push_back(GetSituation(q));
+
+		// 計算偶/奇宇稱的機率
+		long long P_even = 0, P_odd = 0;
+		for (size_t idx = 0; idx < state.size(); idx++) {
+
+			int parity = 0;
+			for (int pos : positions)
+				parity ^= ((idx >> pos) & 1);
+
+			int128_t abs_val = QMath::AbsoluteValue(state[idx]);
+			long long prob = static_cast<long long>((abs_val * abs_val) >> Fixed_shift);
+			(parity == 0 ? P_even : P_odd) += prob;
+
+		}
+
+		// 隨機決定宇稱
+		std::random_device rd;
+		std::mt19937_64 gen(rd());
+		std::uniform_int_distribution<long long> dist(0, Fixed_Point);
+		int result = (dist(gen) <= P_even) ? 0 : 1;
+		long long norm = (result == 0) ? P_even : P_odd;
+		long long norm_factor = QMath::NewtonSqrt((int128_t)norm << Fixed_shift);
+
+		// 坍縮並歸一化（不坍縮個別 qubit，只投影到宇稱子空間）
+		for (size_t idx = 0; idx < state.size(); idx++) {
+
+			int parity = 0;
+			for (int pos : positions)
+				parity ^= ((idx >> pos) & 1);
+
+			if (parity != result) state[idx] = FixedComplex();
+			else                  state[idx] = state[idx] / norm_factor;
+
+		}
+
+		return result;
+	}
+
 	int GenerateQubit() {
 
 		Qubit_Amount++;
@@ -1613,6 +1451,200 @@ public:
 	}
 
 
+	void ApplySingleQubitGate(const int qubit, const GateType type, const double param = 0.0) {
+
+		if (IsQubitUnoperable(qubit)) return;
+		int q_pos = GetSituation(qubit);
+		auto& state = Entangled_Qubit_Set[qubit]->second;
+		size_t half = state.size() >> 1;
+
+		double half_rad, c, s;
+		if (type == GateType::Rx || type == GateType::Ry || type == GateType::Rz)
+			half_rad = param * Pi / 180.0 / 2.0, c = cos(half_rad), s = sin(half_rad);
+
+		for (size_t i = 0; i < half; i++) {
+
+			auto& s0 = state[BitAdd(i, q_pos, 0ULL)];
+			auto& s1 = state[BitAdd(i, q_pos, 1ULL)];
+			FixedComplex tmp;
+
+			switch (type) {
+
+				// ── Permutation ─────────────────────────────
+			case GateType::X:
+				std::swap(s0, s1);
+				break;
+
+				// ── PhaseOnly（不動 s0）────────────────────
+			case GateType::Z:
+				s1.Real = -s1.Real; s1.Imaginary = -s1.Imaginary;
+				break;
+			case GateType::S:
+				tmp = s1;
+				s1.Real = -tmp.Imaginary; s1.Imaginary = tmp.Real;
+				break;
+			case GateType::Sdg:
+				tmp = s1;
+				s1.Real = tmp.Imaginary; s1.Imaginary = -tmp.Real;
+				break;
+			case GateType::T:
+				s1 = s1 * FixedComplex(FixedPoint(Root_half), FixedPoint(Root_half));
+				break;
+			case GateType::Tdg:
+				s1 = s1 * FixedComplex(FixedPoint(Root_half), FixedPoint(-Root_half));
+				break;
+
+				// ── PhaseOnly（s0 和 s1 都動）──────────────
+			case GateType::Rz:
+				s0 = s0 * FixedComplex(FixedPoint(c), FixedPoint(-s));
+				s1 = s1 * FixedComplex(FixedPoint(c), FixedPoint(s));
+				break;
+
+				// ── FullUnitary off-diagonal（Y）───────────
+			case GateType::Y:
+				std::swap(s0, s1);
+				tmp = s0;
+				s0.Real = -tmp.Imaginary; s0.Imaginary = tmp.Real;   // × (-i)
+				tmp = s1;
+				s1.Real = tmp.Imaginary; s1.Imaginary = -tmp.Real;  // × i  (swap後再乘)
+				// 校正：Y = [[0,-i],[i,0]]
+				// swap後 s0=原s1, s1=原s0
+				// s0 × (-i), s1 × i
+				break;
+
+				// ── FullUnitary（H, Rx, Ry）─────────────────
+			case GateType::H: {
+				FixedComplex a = s0, b = s1;
+				s0 = a * FixedPoint(Root_half) + b * FixedPoint(Root_half);
+				s1 = a * FixedPoint(Root_half) + b * FixedPoint(-Root_half);
+				break;
+			}
+			case GateType::Rx: {
+				FixedComplex a = s0, b = s1;
+				s0 = a * FixedPoint(c) + b * FixedComplex(0LL, FixedPoint(-s));
+				s1 = a * FixedComplex(0LL, FixedPoint(-s)) + b * FixedPoint(c);
+				break;
+			}
+			case GateType::Ry: {
+				FixedComplex a = s0, b = s1;
+				s0 = a * FixedPoint(c) + b * FixedPoint(-s);
+				s1 = a * FixedPoint(s) + b * FixedPoint(c);
+				break;
+			}
+			default: break;
+			}
+		}
+	}
+
+	void ApplyTwoQubitGate(const int q1, const int q2, const GateType type, const double param = 0.0) {
+
+		if (IsQubitUnoperable(q1) || IsQubitUnoperable(q2) || q1 == q2) return;
+		if (Entangled_Qubit_Set[q1]->first != Entangled_Qubit_Set[q2]->first)
+			CombineEntangledQubitSet(q1, q2);
+
+		int qs1 = GetSituation(q1), qs2 = GetSituation(q2);
+		auto& state = Entangled_Qubit_Set[q1]->second;
+		size_t quarter = state.size() >> 2;
+
+		for (size_t i = 0; i < quarter; i++) {
+
+			auto& s00 = state[BitAdd(i, { {qs1,0},{qs2,0} })];
+			auto& s01 = state[BitAdd(i, { {qs1,0},{qs2,1} })];
+			auto& s10 = state[BitAdd(i, { {qs1,1},{qs2,0} })];
+			auto& s11 = state[BitAdd(i, { {qs1,1},{qs2,1} })];
+
+			switch (type) {
+
+			case GateType::CNOT:
+				std::swap(s10, s11);
+				break;
+
+			case GateType::CZ:
+				s11.Real = -s11.Real; s11.Imaginary = -s11.Imaginary;
+				break;
+
+			case GateType::SWAP:
+				std::swap(s01, s10);
+				break;
+
+			case GateType::iSWAP: {
+				std::swap(s01, s10);
+				FixedComplex tmp = s10;
+				s10.Real = -tmp.Imaginary; s10.Imaginary = tmp.Real;  // × i
+				tmp = s01;
+				s01.Real = -tmp.Imaginary; s01.Imaginary = tmp.Real;  // × i
+				break;
+			}
+			case GateType::SqrtSWAP: {
+				FixedComplex a = s01, b = s10;
+				s01 = a * FixedComplex(Fixed_Point >> 1, Fixed_Point >> 1)
+					+ b * FixedComplex(Fixed_Point >> 1, -(Fixed_Point >> 1));
+				s10 = a * FixedComplex(Fixed_Point >> 1, -(Fixed_Point >> 1))
+					+ b * FixedComplex(Fixed_Point >> 1, Fixed_Point >> 1);
+				break;
+			}
+			default: break;
+			}
+		}
+
+		std::vector<int> qubits_in_set = Entangled_Qubit_Set[q1]->first;
+
+		for (int count = 0; count < qubits_in_set.size(); count++)
+			ExtractSeparatedQubit(qubits_in_set[count]);
+
+	}
+
+	void ApplyThreeQubitGate(const int q1, const int q2, const int q3,
+		const GateType type, const double param = 0.0) {
+
+		if (IsQubitUnoperable(q1) || IsQubitUnoperable(q2) || IsQubitUnoperable(q3) ||
+			q1 == q2 || q1 == q3 || q2 == q3) return;
+		if (Entangled_Qubit_Set[q1]->first != Entangled_Qubit_Set[q2]->first)
+			CombineEntangledQubitSet(q1, q2);
+		if (Entangled_Qubit_Set[q1]->first != Entangled_Qubit_Set[q3]->first)
+			CombineEntangledQubitSet(q1, q3);
+
+		int qs1 = GetSituation(q1), qs2 = GetSituation(q2), qs3 = GetSituation(q3);
+		auto& state = Entangled_Qubit_Set[q1]->second;
+		size_t eighth = state.size() >> 3;
+
+		for (size_t i = 0; i < eighth; i++) {
+
+			auto& s110 = state[BitAdd(i, { {qs1,1},{qs2,1},{qs3,0} })];
+			auto& s111 = state[BitAdd(i, { {qs1,1},{qs2,1},{qs3,1} })];
+			auto& s101 = state[BitAdd(i, { {qs1,1},{qs2,0},{qs3,1} })];
+
+			switch (type) {
+
+			case GateType::CCNOT:
+				std::swap(s110, s111);
+				break;
+
+			case GateType::CSWAP:
+				std::swap(s110, s101);
+				break;
+
+			case GateType::Deutsch: {
+				double half_rad = param * Pi / 180.0 / 2.0;
+				double c = cos(half_rad), s = sin(half_rad);
+				FixedComplex a = s110, b = s111;
+				s110 = a * FixedComplex(0LL, FixedPoint(c))
+					+ b * FixedComplex(FixedPoint(s), 0LL);
+				s111 = a * FixedComplex(FixedPoint(s), 0LL)
+					+ b * FixedComplex(0LL, FixedPoint(-c));
+				break;
+			}
+			default: break;
+			}
+		}
+
+		std::vector<int> qubits_in_set = Entangled_Qubit_Set[q1]->first;
+
+		for (int count = 0; count < qubits_in_set.size(); count++)
+			ExtractSeparatedQubit(qubits_in_set[count]);
+
+	}
+
 	//單量子位元邏輯閘
 
 	// 單 qubit
@@ -1642,131 +1674,389 @@ public:
 	}
 
 
-};
 
-class CircuitTable {
 
 public:
 
-	// table[qubit][time_step]
-	std::vector<std::vector<GateCell>> table;
-	int num_qubits, num_steps;
 
-	CircuitTable(int qubits, int steps)
-		: num_qubits(qubits), num_steps(steps),
-		table(qubits, std::vector<GateCell>(steps)) {
+
+
+
+
+
+};
+
+
+
+
+// ══════════════════════════════════════════════════════════
+// 量子電路表達式
+//
+// 格式：
+//   <qubit數>, {op,qubit[,qubit,...][,param]}, ...
+//
+// 範例：
+//   "2, {H,0}, {CNOT,0,1}, {M,0}, {M,1}"
+//   "3, {H,0}, {Rx,0,90}, {Deutsch,0,1,2,45}, {Parity,0,1,2}"
+//   "3, {Label,start}, {H,0}, {CNOT,0,1}, {If,0,1,{X,1},{Goto,start}}"
+// ══════════════════════════════════════════════════════════
+class CircuitExpression {
+
+public:
+
+	int                             num_qubits = 0;
+	std::vector<CircuitInstruction> instructions = {};
+
+	// ──────────────────────────────────────────────────────
+	// 解析
+	// ──────────────────────────────────────────────────────
+	static CircuitExpression Parse(const std::string& expr) {
+
+		CircuitExpression result;
+
+		// 去除空白
+		std::string s;
+		for (char ch : expr)
+			if (!std::isspace(static_cast<unsigned char>(ch)))
+				s += ch;
+
+		// 第一個 { 之前是 qubit 數（含尾部逗號）
+		size_t first_brace = s.find('{');
+		if (first_brace == std::string::npos)
+			throw std::runtime_error("CircuitExpression: 找不到任何 { }");
+
+		result.num_qubits = std::stoi(s.substr(0, first_brace - 1));
+
+		// 切出頂層 block 後逐一解析
+		for (const auto& block : SplitTopLevelBlocks(s.substr(first_brace)))
+			result.instructions.push_back(ParseBlock(block));
+
+		return result;
+
 	}
 
-	// ── 單 qubit 閘 ────────────────────────────────
-	void SetGate(int qubit, int time, GateType type,
-		std::vector<double> params = {}) {
-		table[qubit][time] = { type, params };
+	// ──────────────────────────────────────────────────────
+	// 執行
+	// ──────────────────────────────────────────────────────
+	void Execute(Qubit_Simulation& sim) const {
+
+		// 預先建立 label → index 對照表
+		std::unordered_map<std::string, int> label_map;
+		for (int i = 0; i < static_cast<int>(instructions.size()); i++)
+			if (instructions[i].type == GateType::Label)
+				label_map[instructions[i].label] = i;
+
+		// 指令指標主迴圈
+		int ip = 0;
+		while (ip < static_cast<int>(instructions.size())) {
+			int jump = ExecuteOne(instructions[ip], sim, label_map);
+			ip = (jump >= 0) ? jump : ip + 1;
+		}
+
 	}
 
-	// ── 雙 qubit 閘：ctrl 是 primary ───────────────
-	void SetTwoQubitGate(int primary, int secondary,
-		int time, GateType type,
-		std::vector<double> params = {}) {
-		table[primary][time] = { type, params, secondary, -1, true };
-		table[secondary][time] = { type, params, primary,  -1, false };
+	// ──────────────────────────────────────────────────────
+	// 格式對照（方便除錯）
+	// ──────────────────────────────────────────────────────
+	static std::string GateTypeName(GateType type) {
+		switch (type) {
+		case GateType::Identity:    return "Identity";
+		case GateType::H:           return "H";
+		case GateType::X:           return "X";
+		case GateType::Y:           return "Y";
+		case GateType::Z:           return "Z";
+		case GateType::S:           return "S";
+		case GateType::Sdg:         return "Sdg";
+		case GateType::T:           return "T";
+		case GateType::Tdg:         return "Tdg";
+		case GateType::Rx:          return "Rx";
+		case GateType::Ry:          return "Ry";
+		case GateType::Rz:          return "Rz";
+		case GateType::CNOT:        return "CNOT";
+		case GateType::CZ:          return "CZ";
+		case GateType::SWAP:        return "SWAP";
+		case GateType::iSWAP:       return "iSWAP";
+		case GateType::SqrtSWAP:    return "SqrtSWAP";
+		case GateType::CCNOT:       return "CCNOT";
+		case GateType::CSWAP:       return "CSWAP";
+		case GateType::Deutsch:     return "Deutsch";
+		case GateType::Measure:     return "M";
+		case GateType::Parity:      return "Parity";
+		case GateType::Conditional: return "If";
+		case GateType::Label:       return "Label";
+		case GateType::Goto:        return "Goto";
+		default:                    return "?";
+		}
 	}
 
-	// ── 三 qubit 閘：q0 是 primary ─────────────────
-	void SetThreeQubitGate(int q0, int q1, int q2,
-		int time, GateType type,
-		std::vector<double> params = {}) {
-		table[q0][time] = { type, params, q1, q2, true };
-		table[q1][time] = { type, params, q0, q2, false };
-		table[q2][time] = { type, params, q0, q1, false };
+private:
+
+	// ══════════════════════════════════════════════════════
+	// 解析輔助
+	// ══════════════════════════════════════════════════════
+
+	// 名稱 → GateType
+	static GateType ParseGateName(const std::string& name) {
+		static const std::unordered_map<std::string, GateType> table = {
+			{"H",        GateType::H},       {"X",       GateType::X},
+			{"Y",        GateType::Y},       {"Z",       GateType::Z},
+			{"S",        GateType::S},       {"Sdg",     GateType::Sdg},
+			{"T",        GateType::T},       {"Tdg",     GateType::Tdg},
+			{"Rx",       GateType::Rx},      {"Ry",      GateType::Ry},
+			{"Rz",       GateType::Rz},
+			{"CNOT",     GateType::CNOT},    {"CZ",      GateType::CZ},
+			{"SWAP",     GateType::SWAP},    {"iSWAP",   GateType::iSWAP},
+			{"SqrtSWAP", GateType::SqrtSWAP},
+			{"CCNOT",    GateType::CCNOT},   {"CSWAP",   GateType::CSWAP},
+			{"Deutsch",  GateType::Deutsch},
+			{"M",        GateType::Measure}, {"Measure", GateType::Measure},
+			{"Parity",   GateType::Parity},
+			{"If",       GateType::Conditional},
+			{"Label",    GateType::Label},
+			{"Goto",     GateType::Goto},
+		};
+		auto it = table.find(name);
+		return (it != table.end()) ? it->second : GateType::Identity;
 	}
 
-	// ── 測量 ────────────────────────────────────────
-	void SetMeasure(int qubit, int time) {
-		table[qubit][time] = { GateType::Measure };
+	// {qubit 數, param 數}
+	// -1 代表 Parity 的可變 qubit 數
+	static std::pair<int, int> GateSignature(GateType type) {
+		switch (type) {
+		case GateType::H:        case GateType::X:
+		case GateType::Y:        case GateType::Z:
+		case GateType::S:        case GateType::Sdg:
+		case GateType::T:        case GateType::Tdg:
+		case GateType::Measure:  return { 1, 0 };
+
+		case GateType::Rx:       case GateType::Ry:
+		case GateType::Rz:       return { 1, 1 };
+
+		case GateType::CNOT:     case GateType::CZ:
+		case GateType::SWAP:     case GateType::iSWAP:
+		case GateType::SqrtSWAP: return { 2, 0 };
+
+		case GateType::CCNOT:    case GateType::CSWAP:
+			return { 3, 0 };
+		case GateType::Deutsch:  return { 3, 1 };
+		case GateType::Parity:   return { -1, 0 };
+
+							 // Conditional / Label / Goto 在 ParseBlock 裡特殊處理
+		default:                 return { 0, 0 };
+		}
 	}
 
-	// ── 執行並回傳結果 ───────────────────────────────
-	CircuitResult Execute(Qubit_Simulation& sim) const {
+	// 把 "{op1},{op2,...,{nested},...}" 切成各個頂層 block（不含外層 {}）
+	static std::vector<std::string> SplitTopLevelBlocks(const std::string& s) {
+		std::vector<std::string> result;
+		int    depth = 0;
+		std::string cur;
 
-		CircuitResult result{ num_qubits, num_steps };
-
-		for (int t = 0; t < num_steps; t++) {
-
-			// 執行這個 time step 的所有閘
-			for (int q = 0; q < num_qubits; q++) {
-				const GateCell& cell = table[q][t];
-				if (!cell.is_primary) continue;  // 多 qubit 閘只執行一次
-				ApplyGate(sim, q, cell);
+		for (char ch : s) {
+			if (ch == '{') {
+				if (depth > 0) cur += ch;
+				depth++;
 			}
-
-			// 記錄這個 time step 的快照
-			result.snapshots.push_back(TakeSnapshot(sim, t));
+			else if (ch == '}') {
+				depth--;
+				if (depth > 0) cur += ch;
+				else {
+					if (!cur.empty()) result.push_back(cur);
+					cur.clear();
+				}
+			}
+			else {
+				if (depth > 0) cur += ch;
+			}
 		}
 
 		return result;
 	}
 
-private:
+	// 解析單個 block（不含外層大括號）
+	static CircuitInstruction ParseBlock(const std::string& block) {
 
-	void ApplyGate(Qubit_Simulation& sim,
-		int qubit, const GateCell& cell) const {
-		switch (cell.type) {
-		case GateType::H:       sim.HadamardGate(qubit); break;
-		case GateType::X:       sim.XGate(qubit);        break;
-		case GateType::Y:       sim.YGate(qubit);        break;
-		case GateType::Z:       sim.ZGate(qubit);        break;
-		case GateType::S:       sim.SGate(qubit);        break;
-		case GateType::Sdg:     sim.SdgGate(qubit);      break;
-		case GateType::T:       sim.TGate(qubit);        break;
-		case GateType::Tdg:     sim.TdgGate(qubit);      break;
-		case GateType::Rx:      sim.RxGate(qubit, cell.params[0]); break;
-		case GateType::Ry:      sim.RyGate(qubit, cell.params[0]); break;
-		case GateType::Rz:      sim.RzGate(qubit, cell.params[0]); break;
+		size_t first_comma = block.find(',');
+		std::string gate_name = (first_comma == std::string::npos)
+			? block
+			: block.substr(0, first_comma);
 
-		case GateType::CNOT:    sim.CNOTGate(qubit, cell.link_qubit);  break;
-		case GateType::CZ:      sim.CZGate(qubit, cell.link_qubit);    break;
-		case GateType::SWAP:    sim.SWAPGate(qubit, cell.link_qubit);  break;
-		case GateType::iSWAP:   sim.ISWAPGate(qubit, cell.link_qubit); break;
-		case GateType::SqrtSWAP:sim.SqrtSWAPGate(qubit, cell.link_qubit); break;
+		CircuitInstruction inst;
+		inst.type = ParseGateName(gate_name);
 
-		case GateType::CCNOT:
-			sim.CCNOTGate(qubit, cell.link_qubit, cell.link_qubit2); break;
-		case GateType::CSWAP:
-			sim.CSWAPGate(qubit, cell.link_qubit, cell.link_qubit2); break;
+		if (first_comma == std::string::npos)
+			return inst;   // 沒有額外參數（例如純 Identity）
+
+		std::string rest = block.substr(first_comma + 1);
+
+		// ── Label / Goto：rest 就是名稱字串 ──────────────
+		if (inst.type == GateType::Label || inst.type == GateType::Goto) {
+			inst.label = rest;
+			return inst;
+		}
+
+		// ── Conditional：If,<qubit>,<expected>,{sub},...  ─
+		if (inst.type == GateType::Conditional) {
+
+			// 找到第一個 { 之前的部分是 qubit + expected
+			size_t first_brace = rest.find('{');
+			std::string header = (first_brace == std::string::npos)
+				? rest
+				: rest.substr(0, first_brace - 1);  // -1 去掉逗號
+
+			size_t comma_pos = header.find(',');
+			inst.qubits.push_back(std::stoi(header.substr(0, comma_pos)));
+			inst.expected_val = std::stoi(header.substr(comma_pos + 1));
+
+			// 剩下的部分遞迴解析子操作
+			if (first_brace != std::string::npos)
+				for (const auto& sub : SplitTopLevelBlocks(rest.substr(first_brace)))
+					inst.sub_insts.push_back(ParseBlock(sub));
+
+			return inst;
+		}
+
+		// ── 普通閘 ────────────────────────────────────────
+		std::pair<int, int> sig = GateSignature(inst.type);
+		int nq = sig.first;
+		int np = sig.second;
+
+		if (nq == -1) {
+			// Parity：全部 token 都是 qubit
+			std::string cur;
+			for (char ch : rest + ",") {
+				if (ch == ',') {
+					if (!cur.empty()) inst.qubits.push_back(std::stoi(cur));
+					cur.clear();
+				}
+				else {
+					cur += ch;
+				}
+			}
+		}
+		else {
+			// 一般情況：切 token
+			std::vector<std::string> tokens;
+			std::string cur;
+			for (char ch : rest + ",") {
+				if (ch == ',') {
+					if (!cur.empty()) tokens.push_back(cur);
+					cur.clear();
+				}
+				else {
+					cur += ch;
+				}
+			}
+			for (int i = 0; i < nq && i < static_cast<int>(tokens.size()); i++)
+				inst.qubits.push_back(std::stoi(tokens[i]));
+			if (np > 0 && nq < static_cast<int>(tokens.size()))
+				inst.param = std::stod(tokens[nq]);
+		}
+
+		return inst;
+	}
+
+	// ══════════════════════════════════════════════════════
+	// 執行輔助
+	//
+	// 回傳值：
+	//   -1  = 正常繼續到下一條
+	//  >= 0 = 跳躍到該 index
+	// ══════════════════════════════════════════════════════
+	static int ExecuteOne(
+		const CircuitInstruction& inst,
+		Qubit_Simulation& sim,
+		const std::unordered_map<std::string, int>& label_map) {
+
+		switch (inst.type) {
+
+			// ── 單 qubit，無參數 ──────────────────────────────
+		case GateType::H:    case GateType::X:   case GateType::Y:
+		case GateType::Z:    case GateType::S:   case GateType::Sdg:
+		case GateType::T:    case GateType::Tdg:
+			sim.ApplySingleQubitGate(inst.qubits[0], inst.type);
+			return -1;
+
+			// ── 單 qubit，帶角度 ──────────────────────────────
+		case GateType::Rx:   case GateType::Ry:  case GateType::Rz:
+			sim.ApplySingleQubitGate(inst.qubits[0], inst.type, inst.param);
+			return -1;
+
+			// ── 雙 qubit ──────────────────────────────────────
+		case GateType::CNOT:     case GateType::CZ:
+		case GateType::SWAP:     case GateType::iSWAP:
+		case GateType::SqrtSWAP:
+			sim.ApplyTwoQubitGate(inst.qubits[0], inst.qubits[1], inst.type);
+			return -1;
+
+			// ── 三 qubit，無參數 ──────────────────────────────
+		case GateType::CCNOT:    case GateType::CSWAP:
+			sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1],
+				inst.qubits[2], inst.type);
+			return -1;
+
+			// ── 三 qubit，帶角度 ──────────────────────────────
 		case GateType::Deutsch:
-			sim.DeutschGate(qubit, cell.link_qubit,
-				cell.link_qubit2, cell.params[0]);       break;
+			sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1],
+				inst.qubits[2], inst.type, inst.param);
+			return -1;
 
-		case GateType::Measure: sim.ObserverQubit(qubit); break;
-		default: break;
+			// ── 測量 ──────────────────────────────────────────
+		case GateType::Measure:
+			sim.ObserverQubit(inst.qubits[0]);
+			return -1;
+
+			// ── 宇稱測量 ──────────────────────────────────────
+		case GateType::Parity:
+			sim.MeasureParity(inst.qubits);
+			return -1;
+
+			// ── Label：no-op ───────────────────────────────────
+		case GateType::Label:
+			return -1;
+
+			// ── Goto：回傳目標 index ───────────────────────────
+		case GateType::Goto: {
+			auto it = label_map.find(inst.label);
+			return (it != label_map.end()) ? it->second : -1;
+		}
+
+			// ── Conditional：測量 + 條件執行 + 向上傳遞跳躍 ───
+		case GateType::Conditional: {
+			int meas = sim.ObserverQubit(inst.qubits[0]);
+			if (meas == inst.expected_val) {
+				for (const auto& sub : inst.sub_insts) {
+					int jump = ExecuteOne(sub, sim, label_map);
+					if (jump >= 0) return jump;  // 把 Goto 傳遞回主迴圈
+				}
+			}
+			return -1;
+		}
+
+		default:
+			return -1;
 		}
 	}
 
-	StepSnapshot TakeSnapshot(Qubit_Simulation& sim, int step) const {
-		// 這裡需要 Qubit_Simulation 開放幾個查詢介面
-		// 目前你的 OuputEntangledQubitSet 可以先用
-		// 建議補充以下三個 getter：
-		//   GetEntangledSets()   → 所有 set 的資料
-		//   GetProbabilities(q)  → {P0, P1}
-		//   GetMeasurement(q)    → 結果或 -1
-		StepSnapshot snap;
-		snap.step = step;
-		// ... 填入資料
-		return snap;
-	}
 };
 
 
 int main() {
 
+	Qubit_Simulation sim = Qubit_Simulation();
+
+	auto circuit = CircuitExpression::Parse("3, {H,0}, {CNOT,0,1}");
+	circuit.Execute(sim);
+
+
+}
 
 
 
-
+/*
 	Qubit_Simulation a = Qubit_Simulation(3);
 
 
-	/*
 	Qubit_Simulation::Matrix A;
 
 
@@ -1774,37 +2064,34 @@ int main() {
 	//Qubit_Simulation::Complex::OutputComplex(Qubit_Simulation::QMath::DeterminantsOfMatrix(A));
 	Qubit_Simulation::Matrix::OutputMatrix(Qubit_Simulation::QMath::GenerateQRFactorization(A).first);
 
+
+
+a.HadamardGate(0);
+a.CNOTGate(0, 1);
+a.OuputEntangledQubitSet(0);
+//a.HadamardGate(1);
+//a.OuputEntangledQubitSet(0);
+
+a.CNOTGate(1, 2);
+a.OuputEntangledQubitSet(0);
+
+a.CNOTGate(2, 1);
+a.OuputEntangledQubitSet(0);
+std::cout << std::endl;
+
+
+std::cout << a.ObserverQubit(0) << std::endl;
+std::cout << a.ObserverQubit(1) << std::endl;
+
+
+
+	a.PositiveGenerateBellState();
+
+	a.Hadamard(1);
+	a.CNOT(0,1);
+
+	//a.CCNOT(0,1,2);
+	//a.CSWAP(0,1,2);
+	a.OuputEntangledQubitSet(0);
+	
 	*/
-
-
-	a.HadamardGate(0);
-	a.CNOTGate(0, 1);
-	a.OuputEntangledQubitSet(0);
-	//a.HadamardGate(1);
-	//a.OuputEntangledQubitSet(0);
-
-	a.CNOTGate(1, 2);
-	a.OuputEntangledQubitSet(0);
-
-	a.CNOTGate(2, 1);
-	a.OuputEntangledQubitSet(0);
-	std::cout << std::endl;
-
-
-	std::cout << a.ObserverQubit(0) << std::endl;
-	std::cout << a.ObserverQubit(1) << std::endl;
-
-
-
-	/*
-		a.PositiveGenerateBellState();
-
-		a.Hadamard(1);
-		a.CNOT(0,1);
-
-		//a.CCNOT(0,1,2);
-		//a.CSWAP(0,1,2);
-		a.OuputEntangledQubitSet(0);*/
-
-
-}
