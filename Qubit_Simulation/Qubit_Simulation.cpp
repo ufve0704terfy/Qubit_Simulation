@@ -21,7 +21,10 @@ static constexpr const long long int Tolerent_Round = 1LL << 10;
  * 因此使用long long配合定點數可以有效的解決運算中的浮點誤差問題
  * 以2^62為縮放基準
  */
-
+struct EntangledGroupSnapshot {
+	std::vector<int>                       qubit_ids;
+	std::vector<std::pair<double, double>>  amplitudes;  // {real, imag}
+};
 
 enum class GateType {
 	Identity,
@@ -922,7 +925,6 @@ public:
 
 	}
 
-
 private:
 
 	int Qubit_Amount;
@@ -1450,6 +1452,76 @@ public:
 
 	}
 
+	int GetQubitAmount() const { return Qubit_Amount; }
+
+	int  GetMeasurementResult(int qubit) {
+		if (!IsObservered(qubit)) return -1;
+			return Qubit_Set_Observation[qubit].second;
+	}
+
+	std::pair<double, double> GetProbabilities(int qubit) {
+
+		if (IsObservered(qubit)) return {0.0, 0.0};
+
+		if (Entangled_Qubit_Set.find(qubit) == Entangled_Qubit_Set.end()) return {0.0, 0.0};
+
+		auto& state = Entangled_Qubit_Set[qubit]->second;
+		int q_pos   = GetSituation(qubit);
+		size_t half = state.size() >> 1;
+		double P0 = 0.0, P1 = 0.0;
+
+		for (size_t c = 0; c < half; c++) {
+
+			auto a0 = state[BitAdd(c, q_pos, 0ULL)];
+			auto a1 = state[BitAdd(c, q_pos, 1ULL)];
+
+			double r0 = FixedPointToDouble(a0.Real), i0 = FixedPointToDouble(a0.Imaginary);
+			double r1 = FixedPointToDouble(a1.Real), i1 = FixedPointToDouble(a1.Imaginary);
+
+			P0 += r0*r0 + i0*i0;
+			P1 += r1*r1 + i1*i1;
+
+		}
+
+		return {P0, P1};
+
+	}
+
+	std::vector<EntangledGroupSnapshot> GetEntangledGroups() {
+
+		std::vector<EntangledGroupSnapshot> result;
+
+		std::vector<bool> visited(Qubit_Amount, false);
+
+		for (int q = 0; q < Qubit_Amount; q++) {
+
+			if (visited[q] || IsObservered(q)) continue;
+
+			if (Entangled_Qubit_Set.find(q) == Entangled_Qubit_Set.end()) continue;
+
+			auto* ptr = Entangled_Qubit_Set[q];
+
+		    if (!ptr) continue;
+		         // 只處理 primary（first qubit id == q）
+		    if (ptr->first.empty() || ptr->first[0] != q) continue;
+
+			EntangledGroupSnapshot info;
+
+			info.qubit_ids = ptr->first;
+
+			for (int id : info.qubit_ids) visited[id] = true;
+			for (const auto& amp : ptr->second)
+				info.amplitudes.push_back({
+					FixedPointToDouble(amp.Real),
+					FixedPointToDouble(amp.Imaginary)
+				});
+			result.push_back(info);
+		}
+
+		return result;
+
+	}
+
 
 	void ApplySingleQubitGate(const int qubit, const GateType type, const double param = 0.0) {
 
@@ -1688,18 +1760,34 @@ public:
 
 
 
+// ══════════════════════════════════════════════════════════════
+// 快照資料結構
+// ══════════════════════════════════════════════════════════════
 
-// ══════════════════════════════════════════════════════════
-// 量子電路表達式
+struct StepSnapshot {
+	int                                    step_index = 0;
+	std::string                            step_label = "";
+	std::vector<EntangledGroupSnapshot>    groups = {};
+	std::map<int, std::pair<double, double>>probabilities = {};  // qubit → {P0,P1}
+	std::map<int, int>                     measurements = {};  // qubit → 結果（-1=未測）
+};
+
+struct CircuitResult {
+	int                        num_qubits = 0;
+	std::vector<StepSnapshot>  snapshots = {};
+};
+
+// ══════════════════════════════════════════════════════════════
+// CircuitExpression
 //
 // 格式：
-//   <qubit數>, {op,qubit[,qubit,...][,param]}, ...
+//   <qubit數>, {op, qubit [, qubit...] [, param]}, ...
 //
 // 範例：
 //   "2, {H,0}, {CNOT,0,1}, {M,0}, {M,1}"
 //   "3, {H,0}, {Rx,0,90}, {Deutsch,0,1,2,45}, {Parity,0,1,2}"
-//   "3, {Label,start}, {H,0}, {CNOT,0,1}, {If,0,1,{X,1},{Goto,start}}"
-// ══════════════════════════════════════════════════════════
+//   "3, {Label,start}, {H,0}, {If,0,1,{X,1},{Goto,start}}"
+// ══════════════════════════════════════════════════════════════
 class CircuitExpression {
 
 public:
@@ -1707,37 +1795,33 @@ public:
 	int                             num_qubits = 0;
 	std::vector<CircuitInstruction> instructions = {};
 
-	// ──────────────────────────────────────────────────────
-	// 解析
-	// ──────────────────────────────────────────────────────
+	// ──────────────────────────────────────────────────────────
+	// Parse：字串 → CircuitExpression
+	// ──────────────────────────────────────────────────────────
 	static CircuitExpression Parse(const std::string& expr) {
 
 		CircuitExpression result;
 
-		// 去除空白
 		std::string s;
 		for (char ch : expr)
 			if (!std::isspace(static_cast<unsigned char>(ch)))
 				s += ch;
 
-		// 第一個 { 之前是 qubit 數（含尾部逗號）
 		size_t first_brace = s.find('{');
 		if (first_brace == std::string::npos)
-			throw std::runtime_error("CircuitExpression: 找不到任何 { }");
+			throw std::runtime_error("CircuitExpression: 找不到任何 {}");
 
 		result.num_qubits = std::stoi(s.substr(0, first_brace - 1));
 
-		// 切出頂層 block 後逐一解析
 		for (const auto& block : SplitTopLevelBlocks(s.substr(first_brace)))
 			result.instructions.push_back(ParseBlock(block));
 
 		return result;
-
 	}
 
-	// ──────────────────────────────────────────────────────
-	// 執行
-	// ──────────────────────────────────────────────────────
+	// ──────────────────────────────────────────────────────────
+	// Execute：執行電路（不記錄快照）
+	// ──────────────────────────────────────────────────────────
 	void Execute(Qubit_Simulation& sim) const {
 
 		sim.ResetQubitSet();
@@ -1745,24 +1829,47 @@ public:
 		for (int count = 0; count < num_qubits; count++)
 			sim.GenerateQubit();
 
-		// 預先建立 label → index 對照表
-		std::unordered_map<std::string, int> label_map;
-		for (int i = 0; i < static_cast<int>(instructions.size()); i++)
-			if (instructions[i].type == GateType::Label)
-				label_map[instructions[i].label] = i;
+		std::unordered_map<std::string, int> label_map = BuildLabelMap();
 
-		// 指令指標主迴圈
 		int ip = 0;
 		while (ip < static_cast<int>(instructions.size())) {
 			int jump = ExecuteOne(instructions[ip], sim, label_map);
 			ip = (jump >= 0) ? jump : ip + 1;
 		}
-
 	}
 
-	// ──────────────────────────────────────────────────────
-	// 格式對照（方便除錯）
-	// ──────────────────────────────────────────────────────
+	// ──────────────────────────────────────────────────────────
+	// ExecuteWithCapture：執行電路並在每步記錄快照
+	// ──────────────────────────────────────────────────────────
+	CircuitResult ExecuteWithCapture(Qubit_Simulation& sim) const {
+
+		sim.ResetQubitSet();
+
+		for (int count = 0; count < num_qubits; count++)
+			sim.GenerateQubit();
+
+		CircuitResult result;
+		result.num_qubits = num_qubits;
+
+		std::unordered_map<std::string, int> label_map = BuildLabelMap();
+
+		int ip = 0;
+		while (ip < static_cast<int>(instructions.size())) {
+
+			const auto& inst = instructions[ip];
+			int jump = ExecuteOne(inst, sim, label_map);
+
+			result.snapshots.push_back(TakeSnapshot(inst, ip, sim));
+
+			ip = (jump >= 0) ? jump : ip + 1;
+		}
+
+		return result;
+	}
+
+	// ──────────────────────────────────────────────────────────
+	// GateTypeName：enum → 字串
+	// ──────────────────────────────────────────────────────────
 	static std::string GateTypeName(GateType type) {
 		switch (type) {
 		case GateType::Identity:    return "Identity";
@@ -1794,27 +1901,46 @@ public:
 		}
 	}
 
+	// ──────────────────────────────────────────────────────────
+	// InstructionToString：指令 → 可讀字串
+	// ──────────────────────────────────────────────────────────
+	static std::string InstructionToString(const CircuitInstruction& inst) {
+		std::ostringstream ss;
+		ss << "{" << GateTypeName(inst.type);
+		if (!inst.label.empty())
+			ss << "," << inst.label;
+		for (int q : inst.qubits)
+			ss << ",Q" << q;
+		if (inst.param != 0.0)
+			ss << "," << std::fixed << std::setprecision(1) << inst.param;
+		if (inst.type == GateType::Conditional)
+			ss << ",exp=" << inst.expected_val;
+		for (const auto& sub : inst.sub_insts)
+			ss << " " << InstructionToString(sub);
+		ss << "}";
+		return ss.str();
+	}
+
 private:
 
-	// ══════════════════════════════════════════════════════
-	// 解析輔助
-	// ══════════════════════════════════════════════════════
+	// ══════════════════════════════════════════════════════════
+	// 解析
+	// ══════════════════════════════════════════════════════════
 
-	// 名稱 → GateType
 	static GateType ParseGateName(const std::string& name) {
 		static const std::unordered_map<std::string, GateType> table = {
-			{"H",        GateType::H},       {"X",       GateType::X},
-			{"Y",        GateType::Y},       {"Z",       GateType::Z},
-			{"S",        GateType::S},       {"Sdg",     GateType::Sdg},
-			{"T",        GateType::T},       {"Tdg",     GateType::Tdg},
-			{"Rx",       GateType::Rx},      {"Ry",      GateType::Ry},
+			{"H",        GateType::H},        {"X",       GateType::X},
+			{"Y",        GateType::Y},        {"Z",       GateType::Z},
+			{"S",        GateType::S},        {"Sdg",     GateType::Sdg},
+			{"T",        GateType::T},        {"Tdg",     GateType::Tdg},
+			{"Rx",       GateType::Rx},       {"Ry",      GateType::Ry},
 			{"Rz",       GateType::Rz},
-			{"CNOT",     GateType::CNOT},    {"CZ",      GateType::CZ},
-			{"SWAP",     GateType::SWAP},    {"iSWAP",   GateType::iSWAP},
+			{"CNOT",     GateType::CNOT},     {"CZ",      GateType::CZ},
+			{"SWAP",     GateType::SWAP},     {"iSWAP",   GateType::iSWAP},
 			{"SqrtSWAP", GateType::SqrtSWAP},
-			{"CCNOT",    GateType::CCNOT},   {"CSWAP",   GateType::CSWAP},
+			{"CCNOT",    GateType::CCNOT},    {"CSWAP",   GateType::CSWAP},
 			{"Deutsch",  GateType::Deutsch},
-			{"M",        GateType::Measure}, {"Measure", GateType::Measure},
+			{"M",        GateType::Measure},  {"Measure", GateType::Measure},
 			{"Parity",   GateType::Parity},
 			{"If",       GateType::Conditional},
 			{"Label",    GateType::Label},
@@ -1824,8 +1950,7 @@ private:
 		return (it != table.end()) ? it->second : GateType::Identity;
 	}
 
-	// {qubit 數, param 數}
-	// -1 代表 Parity 的可變 qubit 數
+	// {qubit 數, param 數}，-1 = 可變 qubit 數（Parity）
 	static std::pair<int, int> GateSignature(GateType type) {
 		switch (type) {
 		case GateType::H:        case GateType::X:
@@ -1833,30 +1958,24 @@ private:
 		case GateType::S:        case GateType::Sdg:
 		case GateType::T:        case GateType::Tdg:
 		case GateType::Measure:  return { 1, 0 };
-
 		case GateType::Rx:       case GateType::Ry:
 		case GateType::Rz:       return { 1, 1 };
-
 		case GateType::CNOT:     case GateType::CZ:
 		case GateType::SWAP:     case GateType::iSWAP:
 		case GateType::SqrtSWAP: return { 2, 0 };
-
 		case GateType::CCNOT:    case GateType::CSWAP:
 			return { 3, 0 };
 		case GateType::Deutsch:  return { 3, 1 };
 		case GateType::Parity:   return { -1, 0 };
-
-							 // Conditional / Label / Goto 在 ParseBlock 裡特殊處理
 		default:                 return { 0, 0 };
 		}
 	}
 
-	// 把 "{op1},{op2,...,{nested},...}" 切成各個頂層 block（不含外層 {}）
+	// 頂層 {} 切分（處理巢狀）
 	static std::vector<std::string> SplitTopLevelBlocks(const std::string& s) {
 		std::vector<std::string> result;
-		int    depth = 0;
+		int depth = 0;
 		std::string cur;
-
 		for (char ch : s) {
 			if (ch == '{') {
 				if (depth > 0) cur += ch;
@@ -1874,84 +1993,73 @@ private:
 				if (depth > 0) cur += ch;
 			}
 		}
-
 		return result;
 	}
 
-	// 解析單個 block（不含外層大括號）
+	// token 切分（不含 {} 的普通逗號分隔）
+	static std::vector<std::string> SplitTokens(const std::string& s) {
+		std::vector<std::string> tokens;
+		std::string cur;
+		for (size_t i = 0; i <= s.size(); i++) {
+			if (i == s.size() || s[i] == ',') {
+				if (!cur.empty()) tokens.push_back(cur);
+				cur.clear();
+			}
+			else {
+				cur += s[i];
+			}
+		}
+		return tokens;
+	}
+
 	static CircuitInstruction ParseBlock(const std::string& block) {
 
 		size_t first_comma = block.find(',');
 		std::string gate_name = (first_comma == std::string::npos)
-			? block
-			: block.substr(0, first_comma);
+			? block : block.substr(0, first_comma);
 
 		CircuitInstruction inst;
 		inst.type = ParseGateName(gate_name);
 
 		if (first_comma == std::string::npos)
-			return inst;   // 沒有額外參數（例如純 Identity）
+			return inst;
 
 		std::string rest = block.substr(first_comma + 1);
 
-		// ── Label / Goto：rest 就是名稱字串 ──────────────
+		// Label / Goto
 		if (inst.type == GateType::Label || inst.type == GateType::Goto) {
 			inst.label = rest;
 			return inst;
 		}
 
-		// ── Conditional：If,<qubit>,<expected>,{sub},...  ─
+		// Conditional：If,<qubit>,<expected>,{sub},...
 		if (inst.type == GateType::Conditional) {
-
-			// 找到第一個 { 之前的部分是 qubit + expected
 			size_t first_brace = rest.find('{');
 			std::string header = (first_brace == std::string::npos)
-				? rest
-				: rest.substr(0, first_brace - 1);  // -1 去掉逗號
-
-			size_t comma_pos = header.find(',');
-			inst.qubits.push_back(std::stoi(header.substr(0, comma_pos)));
-			inst.expected_val = std::stoi(header.substr(comma_pos + 1));
-
-			// 剩下的部分遞迴解析子操作
+				? rest : rest.substr(0, first_brace - 1);
+			std::vector<std::string> hdr = SplitTokens(header);
+			if (hdr.size() >= 2) {
+				inst.qubits.push_back(std::stoi(hdr[0]));
+				inst.expected_val = std::stoi(hdr[1]);
+			}
 			if (first_brace != std::string::npos)
 				for (const auto& sub : SplitTopLevelBlocks(rest.substr(first_brace)))
 					inst.sub_insts.push_back(ParseBlock(sub));
-
 			return inst;
 		}
 
-		// ── 普通閘 ────────────────────────────────────────
+		// 普通閘
 		std::pair<int, int> sig = GateSignature(inst.type);
 		int nq = sig.first;
 		int np = sig.second;
 
 		if (nq == -1) {
 			// Parity：全部 token 都是 qubit
-			std::string cur;
-			for (char ch : rest + ",") {
-				if (ch == ',') {
-					if (!cur.empty()) inst.qubits.push_back(std::stoi(cur));
-					cur.clear();
-				}
-				else {
-					cur += ch;
-				}
-			}
+			for (const auto& t : SplitTokens(rest))
+				inst.qubits.push_back(std::stoi(t));
 		}
 		else {
-			// 一般情況：切 token
-			std::vector<std::string> tokens;
-			std::string cur;
-			for (char ch : rest + ",") {
-				if (ch == ',') {
-					if (!cur.empty()) tokens.push_back(cur);
-					cur.clear();
-				}
-				else {
-					cur += ch;
-				}
-			}
+			std::vector<std::string> tokens = SplitTokens(rest);
 			for (int i = 0; i < nq && i < static_cast<int>(tokens.size()); i++)
 				inst.qubits.push_back(std::stoi(tokens[i]));
 			if (np > 0 && nq < static_cast<int>(tokens.size()))
@@ -1961,13 +2069,19 @@ private:
 		return inst;
 	}
 
-	// ══════════════════════════════════════════════════════
-	// 執行輔助
-	//
-	// 回傳值：
-	//   -1  = 正常繼續到下一條
-	//  >= 0 = 跳躍到該 index
-	// ══════════════════════════════════════════════════════
+	// ══════════════════════════════════════════════════════════
+	// 執行
+	// ══════════════════════════════════════════════════════════
+
+	std::unordered_map<std::string, int> BuildLabelMap() const {
+		std::unordered_map<std::string, int> m;
+		for (int i = 0; i < static_cast<int>(instructions.size()); i++)
+			if (instructions[i].type == GateType::Label)
+				m[instructions[i].label] = i;
+		return m;
+	}
+
+	// 回傳 -1 = 正常繼續，>= 0 = 跳躍到該 index
 	static int ExecuteOne(
 		const CircuitInstruction& inst,
 		Qubit_Simulation& sim,
@@ -1975,66 +2089,55 @@ private:
 
 		switch (inst.type) {
 
-			// ── 單 qubit，無參數 ──────────────────────────────
 		case GateType::H:    case GateType::X:   case GateType::Y:
 		case GateType::Z:    case GateType::S:   case GateType::Sdg:
 		case GateType::T:    case GateType::Tdg:
 			sim.ApplySingleQubitGate(inst.qubits[0], inst.type);
 			return -1;
 
-			// ── 單 qubit，帶角度 ──────────────────────────────
 		case GateType::Rx:   case GateType::Ry:  case GateType::Rz:
 			sim.ApplySingleQubitGate(inst.qubits[0], inst.type, inst.param);
 			return -1;
 
-			// ── 雙 qubit ──────────────────────────────────────
 		case GateType::CNOT:     case GateType::CZ:
 		case GateType::SWAP:     case GateType::iSWAP:
 		case GateType::SqrtSWAP:
 			sim.ApplyTwoQubitGate(inst.qubits[0], inst.qubits[1], inst.type);
 			return -1;
 
-			// ── 三 qubit，無參數 ──────────────────────────────
 		case GateType::CCNOT:    case GateType::CSWAP:
 			sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1],
 				inst.qubits[2], inst.type);
 			return -1;
 
-			// ── 三 qubit，帶角度 ──────────────────────────────
 		case GateType::Deutsch:
 			sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1],
 				inst.qubits[2], inst.type, inst.param);
 			return -1;
 
-			// ── 測量 ──────────────────────────────────────────
 		case GateType::Measure:
 			sim.ObserverQubit(inst.qubits[0]);
 			return -1;
 
-			// ── 宇稱測量 ──────────────────────────────────────
 		case GateType::Parity:
 			sim.MeasureParity(inst.qubits);
 			return -1;
 
-			// ── Label：no-op ───────────────────────────────────
 		case GateType::Label:
 			return -1;
 
-			// ── Goto：回傳目標 index ───────────────────────────
 		case GateType::Goto: {
 			auto it = label_map.find(inst.label);
 			return (it != label_map.end()) ? it->second : -1;
 		}
 
-			// ── Conditional：測量 + 條件執行 + 向上傳遞跳躍 ───
 		case GateType::Conditional: {
 			int meas = sim.ObserverQubit(inst.qubits[0]);
-			if (meas == inst.expected_val) {
+			if (meas == inst.expected_val)
 				for (const auto& sub : inst.sub_insts) {
 					int jump = ExecuteOne(sub, sim, label_map);
-					if (jump >= 0) return jump;  // 把 Goto 傳遞回主迴圈
+					if (jump >= 0) return jump;
 				}
-			}
 			return -1;
 		}
 
@@ -2043,8 +2146,337 @@ private:
 		}
 	}
 
+	// ══════════════════════════════════════════════════════════
+	// 快照
+	// ══════════════════════════════════════════════════════════
+
+	static StepSnapshot TakeSnapshot(const CircuitInstruction& inst,
+		int                        step,
+		Qubit_Simulation& sim) {
+		StepSnapshot snap;
+		snap.step_index = step;
+		snap.step_label = InstructionToString(inst);
+		snap.groups = sim.GetEntangledGroups();
+
+		int nq = sim.GetQubitAmount();
+		for (int q = 0; q < nq; q++) {
+			int meas = sim.GetMeasurementResult(q);
+			snap.measurements[q] = meas;
+			if (meas == -1)
+				snap.probabilities[q] = sim.GetProbabilities(q);
+		}
+
+		return snap;
+	}
+
 };
 
+class CircuitPrinter {
+
+public:
+
+	// ── 主入口：電路圖 + 每步快照 ──────────────────────────────
+	static void Print(const CircuitExpression& circuit,
+		const CircuitResult& result,
+		std::ostream& out = std::cout) {
+		PrintHeader(circuit, out);
+		PrintCircuitDiagram(circuit, out);
+		PrintDivider('═', 50, out);
+		for (const auto& snap : result.snapshots)
+			PrintSnapshot(snap, result.num_qubits, out);
+		PrintDivider('═', 50, out);
+	}
+
+	// ── 只印電路圖 ─────────────────────────────────────────────
+	static void PrintDiagram(const CircuitExpression& circuit,
+		std::ostream& out = std::cout) {
+		PrintHeader(circuit, out);
+		PrintCircuitDiagram(circuit, out);
+	}
+
+	// ── 只印全部快照 ───────────────────────────────────────────
+	static void PrintAllSnapshots(const CircuitResult& result,
+		std::ostream& out = std::cout) {
+		for (const auto& snap : result.snapshots)
+			PrintSnapshot(snap, result.num_qubits, out);
+	}
+
+	// ── 印單一快照 ─────────────────────────────────────────────
+	static void PrintSnapshot(const StepSnapshot& snap,
+		int                 num_qubits,
+		std::ostream& out = std::cout) {
+
+		PrintDivider('─', 50, out);
+		out << " Step " << std::setw(2) << snap.step_index + 1
+			<< " │ " << snap.step_label << "\n";
+		PrintDivider('─', 50, out);
+
+		// 測量結果行（已坍縮的 qubit）
+		bool any_measured = false;
+		for (int q = 0; q < num_qubits; q++) {
+			auto it = snap.measurements.find(q);
+			if (it != snap.measurements.end() && it->second != -1) {
+				if (!any_measured) {
+					out << " 測量結果\n";
+					any_measured = true;
+				}
+				out << "   Q[" << q << "] = " << it->second << "\n";
+			}
+		}
+
+		// 各糾纏組的狀態向量
+		if (!snap.groups.empty()) {
+			out << " 量子態\n";
+			for (const auto& group : snap.groups)
+				PrintGroup(group, snap.probabilities, out);
+		}
+	}
+
+private:
+
+	// ══════════════════════════════════════════════════════════
+	// 電路圖
+	// ══════════════════════════════════════════════════════════
+
+	static void PrintCircuitDiagram(const CircuitExpression& circuit,
+		std::ostream& out) {
+
+		int nq = circuit.num_qubits;
+
+		// ── 把指令分配到時間槽 ─────────────────────────────
+		struct TimeSlot {
+			std::vector<bool>              occupied;
+			std::vector<CircuitInstruction>inst_at;
+			TimeSlot(int n)
+				: occupied(n, false), inst_at(n) {
+			}
+		};
+
+		std::vector<TimeSlot> slots;
+
+		for (const auto& inst : circuit.instructions) {
+
+			// 收集這條指令涉及的所有 qubit
+			std::vector<int> targets = CollectQubits(inst, nq);
+
+			// Label / Goto / Conditional 獨占一欄
+			bool standalone = (inst.type == GateType::Label ||
+				inst.type == GateType::Goto ||
+				inst.type == GateType::Conditional);
+
+			int slot_idx = -1;
+			if (!standalone) {
+				for (int s = static_cast<int>(slots.size()) - 1; s >= 0; s--) {
+					bool conflict = false;
+					for (int q : targets)
+						if (slots[s].occupied[q]) { conflict = true; break; }
+					if (!conflict) { slot_idx = s; break; }
+				}
+			}
+
+			if (slot_idx == -1) {
+				slots.push_back(TimeSlot(nq));
+				slot_idx = static_cast<int>(slots.size()) - 1;
+			}
+
+			for (int q : targets) {
+				slots[slot_idx].occupied[q] = true;
+				slots[slot_idx].inst_at[q] = inst;
+			}
+		}
+
+		// ── 計算欄寬 ──────────────────────────────────────
+		const int COL_W = 8;
+
+		// ── 表頭 ──────────────────────────────────────────
+		out << "\n";
+		out << "       ";
+		for (int s = 0; s < static_cast<int>(slots.size()); s++) {
+			std::string hdr = "T" + std::to_string(s);
+			out << std::left << std::setw(COL_W) << hdr;
+		}
+		out << "\n";
+
+		// ── 每個 qubit 一行 ───────────────────────────────
+		for (int q = 0; q < nq; q++) {
+			std::ostringstream row;
+			row << " Q[" << q << "]  ";
+			for (const auto& slot : slots) {
+				if (slot.occupied[q])
+					row << std::left << std::setw(COL_W)
+					<< GateSymbol(slot.inst_at[q], q);
+				else
+					row << std::left << std::setw(COL_W) << "──────";
+			}
+			out << row.str() << "\n";
+		}
+		out << "\n";
+	}
+
+	// 收集一條指令（含 sub_insts）涉及的所有合法 qubit
+	static std::vector<int> CollectQubits(const CircuitInstruction& inst,
+		int nq) {
+		std::vector<int> result;
+		for (int q : inst.qubits)
+			if (q >= 0 && q < nq) result.push_back(q);
+		for (const auto& sub : inst.sub_insts)
+			for (int q : sub.qubits)
+				if (q >= 0 && q < nq) result.push_back(q);
+		// 去重
+		std::sort(result.begin(), result.end());
+		result.erase(std::unique(result.begin(), result.end()), result.end());
+		return result;
+	}
+
+	// ── 閘符號 ────────────────────────────────────────────────
+	static std::string GateSymbol(const CircuitInstruction& inst, int q) {
+		switch (inst.type) {
+		case GateType::H:           return "[H]";
+		case GateType::X:           return "[X]";
+		case GateType::Y:           return "[Y]";
+		case GateType::Z:           return "[Z]";
+		case GateType::S:           return "[S]";
+		case GateType::Sdg:         return "[Sdg]";
+		case GateType::T:           return "[T]";
+		case GateType::Tdg:         return "[Tdg]";
+		case GateType::Rx:          return "[Rx]";
+		case GateType::Ry:          return "[Ry]";
+		case GateType::Rz:          return "[Rz]";
+		case GateType::Measure:     return "[M]";
+		case GateType::Parity:      return "[Par]";
+		case GateType::Label:       return "[LBL:" + inst.label + "]";
+		case GateType::Goto:        return "[->:" + inst.label + "]";
+		case GateType::Conditional: return "[If]";
+		case GateType::SWAP:        return "[x]";
+		case GateType::iSWAP:       return "[ix]";
+		case GateType::SqrtSWAP:    return "[Vx]";
+		case GateType::CZ:
+			return "[CZ]";
+		case GateType::CNOT:
+			return (inst.qubits.size() > 0 && q == inst.qubits[0])
+				? "[ctrl]" : "[NOT]";
+		case GateType::CCNOT:
+			return (inst.qubits.size() > 1 && q == inst.qubits[2])
+				? "[NOT]" : "[ctrl]";
+		case GateType::CSWAP:
+			return (inst.qubits.size() > 0 && q == inst.qubits[0])
+				? "[ctrl]" : "[x]";
+		case GateType::Deutsch:
+			return (inst.qubits.size() > 1 && q == inst.qubits[2])
+				? "[D]" : "[ctrl]";
+		default:
+			return "[?]";
+		}
+	}
+
+	// ══════════════════════════════════════════════════════════
+	// 糾纏組輸出
+	// ══════════════════════════════════════════════════════════
+
+	static void PrintGroup(
+		const EntangledGroupSnapshot& group,
+		const std::map<int, std::pair<double, double>>& probabilities,
+		std::ostream& out) {
+
+		int n = static_cast<int>(group.qubit_ids.size());
+
+		// ── 組標題 ────────────────────────────────────────
+		if (n == 1) {
+			out << "   Q[" << group.qubit_ids[0] << "] (獨立)\n";
+		}
+		else {
+			out << "   {";
+			for (int i = 0; i < n; i++) {
+				if (i) out << ", ";
+				out << "Q[" << group.qubit_ids[i] << "]";
+			}
+			out << "} (糾纏)\n";
+		}
+
+		// ── 狀態向量 ──────────────────────────────────────
+		out << "   " << std::left << std::setw(6) << "State"
+			<< std::right << std::setw(20) << "振幅"
+			<< std::right << std::setw(10) << "機率"
+			<< "\n";
+		out << "   " << std::string(36, '-') << "\n";
+
+		for (int idx = 0; idx < static_cast<int>(group.amplitudes.size()); idx++) {
+			double re = group.amplitudes[idx].first;
+			double im = group.amplitudes[idx].second;
+			double prob = re * re + im * im;
+			if (prob < 1e-9) continue;
+
+			out << "   |" << StateBinary(idx, n) << ">  "
+				<< std::right << std::setw(18) << FormatComplex(re, im)
+				<< std::right << std::setw(8) << FormatPercent(prob)
+				<< "\n";
+		}
+
+		// ── 各 qubit 的 P(0) / P(1)（獨立 qubit 才印）──
+		if (n == 1) {
+			int q = group.qubit_ids[0];
+			auto it = probabilities.find(q);
+			if (it != probabilities.end())
+				out << "   P(0)=" << FormatPercent(it->second.first)
+				<< "  P(1)=" << FormatPercent(it->second.second) << "\n";
+		}
+
+		// 糾纏組：逐一列出每個 qubit 的 reduced probability
+		if (n > 1) {
+			out << "   各 qubit 邊際機率\n";
+			for (int qi = 0; qi < n; qi++) {
+				int q = group.qubit_ids[qi];
+				auto it = probabilities.find(q);
+				if (it != probabilities.end())
+					out << "     Q[" << q << "]"
+					<< "  P(0)=" << FormatPercent(it->second.first)
+					<< "  P(1)=" << FormatPercent(it->second.second)
+					<< "\n";
+			}
+		}
+
+		out << "\n";
+	}
+
+	// ══════════════════════════════════════════════════════════
+	// 格式化工具
+	// ══════════════════════════════════════════════════════════
+
+	static std::string StateBinary(int idx, int n) {
+		std::string s(n, '0');
+		for (int i = 0; i < n; i++)
+			s[n - 1 - i] = ((idx >> i) & 1) ? '1' : '0';
+		return s;
+	}
+
+	static std::string FormatComplex(double re, double im) {
+		std::ostringstream ss;
+		ss << std::fixed << std::setprecision(4) << re;
+		if (im >= 0) ss << "+" << std::fixed << std::setprecision(4) << im << "i";
+		else         ss << std::fixed << std::setprecision(4) << im << "i";
+		return ss.str();
+	}
+
+	static std::string FormatPercent(double p) {
+		std::ostringstream ss;
+		ss << std::fixed << std::setprecision(1) << p * 100.0 << "%";
+		return ss.str();
+	}
+
+	static void PrintDivider(char ch, int width, std::ostream& out) {
+		out << " " << std::string(width, ch) << "\n";
+	}
+
+	static void PrintHeader(const CircuitExpression& circuit, std::ostream& out) {
+		out << "\n";
+		PrintDivider('=', 50, out);
+		out << " Quantum Circuit Simulation\n";
+		out << " Qubits: " << circuit.num_qubits
+			<< "  Steps: " << circuit.instructions.size() << "\n";
+		PrintDivider('=', 50, out);
+	}
+
+};
 
 
 int main() {
@@ -2052,8 +2484,10 @@ int main() {
 	Qubit_Simulation sim = Qubit_Simulation();
 
 	auto circuit = CircuitExpression::Parse("3, {H,0}, {CNOT,0,1}");
-	circuit.Execute(sim);
-	sim.OuputEntangledQubitSet(0);
+	//circuit.Execute(sim);
+	CircuitResult result = circuit.ExecuteWithCapture(sim);
+	CircuitPrinter::Print(circuit, result);
+	//sim.OuputEntangledQubitSet(0);
 
 }
 
