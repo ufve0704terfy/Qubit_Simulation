@@ -45,7 +45,7 @@ struct StepSnapshot {
     std::map<int, int>                     measurements = {};
     ErrorRecord  error_record;
     int          cumulative_errors = 0;
-    double       theoretical_error_accum = 0.0;
+    std::vector<double> qubit_error_accum = {}; 
 };
 
 struct SimulationConfig {
@@ -83,7 +83,8 @@ struct CircuitInstruction {
     GateType                        type = GateType::Identity;
     std::vector<int>                qubits = {};
     double                          param = 0.0;
-    int                             expected_val = 0;
+    int                             expected_val = 1;  // 預設為 1
+    bool                            condition_is_measure = false; // 紀錄條件是否包含測量動作
     std::string                     label = "";
     std::vector<CircuitInstruction> sub_insts = {};
 };
@@ -1093,9 +1094,11 @@ public:
         auto lm = BuildLabelMap();
         std::mt19937_64 rng(std::random_device{}());
         int ip = 0;
+        std::vector<double> dummy_errs(num_qubits, 0.0); // 提供不追蹤快照時的空白陣列
+
         while (ip < static_cast<int>(instructions.size())) {
             ErrorRecord dummy;
-            int jump = ExecuteOne(instructions[ip], sim, lm, cfg, rng, dummy);
+            int jump = ExecuteOne(instructions[ip], sim, lm, cfg, rng, dummy, dummy_errs);
             ip = (jump >= 0) ? jump : ip + 1;
         }
     }
@@ -1115,25 +1118,22 @@ public:
         auto lm = BuildLabelMap();
         std::mt19937_64 rng(std::random_device{}());
 
-        int    cumulative_errors = 0;
-        double theoretical_accum = 0.0;
+        int cumulative_errors = 0;
+        std::vector<double> qubit_error_accum(num_qubits, 0.0); // 針對每個 qubit 獨立追蹤誤差
 
         int ip = 0;
         while (ip < static_cast<int>(instructions.size())) {
             const auto& inst = instructions[ip];
             ErrorRecord err;
-            int jump = ExecuteOne(inst, sim, lm, cfg, rng, err);
+            int jump = ExecuteOne(inst, sim, lm, cfg, rng, err, qubit_error_accum);
 
-            if (cfg.track_errors && err.gate_error_prob > 0.0)
-                theoretical_accum = 1.0
-                - (1.0 - theoretical_accum) * (1.0 - err.gate_error_prob);
             if (cfg.track_errors && err.occurred)
                 cumulative_errors++;
 
             StepSnapshot snap = TakeSnapshot(inst, ip, sim);
             snap.error_record = err;
             snap.cumulative_errors = cumulative_errors;
-            snap.theoretical_error_accum = theoretical_accum;
+            snap.qubit_error_accum = qubit_error_accum; // 儲存當下各 qubit 的狀態拷貝
 
             result.snapshots.push_back(snap);
             ip = (jump >= 0) ? jump : ip + 1;
@@ -1176,12 +1176,20 @@ public:
         std::ostringstream ss;
         ss << "{" << GateTypeName(inst.type);
         if (!inst.label.empty())   ss << "," << inst.label;
-        for (int q : inst.qubits) ss << ",Q" << q;
-        if (inst.param != 0.0)
-            ss << "," << std::fixed << std::setprecision(1) << inst.param;
-        if (inst.type == GateType::Conditional)
-            ss << ",exp=" << inst.expected_val;
-        for (const auto& s : inst.sub_insts) ss << " " << InstructionToString(s);
+
+        if (inst.type == GateType::Conditional) {
+            ss << ",{" << (inst.condition_is_measure ? "M," : "")
+                << (inst.qubits.empty() ? -1 : inst.qubits[0]);
+            if (inst.expected_val != 1) ss << "," << inst.expected_val;
+            ss << "}";
+            for (const auto& s : inst.sub_insts) ss << " " << InstructionToString(s);
+        }
+        else {
+            for (int q : inst.qubits) ss << ",Q" << q;
+            if (inst.param != 0.0)
+                ss << "," << std::fixed << std::setprecision(1) << inst.param;
+            for (const auto& s : inst.sub_insts) ss << " " << InstructionToString(s);
+        }
         ss << "}";
         return ss.str();
     }
@@ -1260,34 +1268,59 @@ private:
         if (fc == std::string::npos) return inst;
         std::string rest = block.substr(fc + 1);
 
-        if (inst.type == GateType::Label || inst.type == GateType::Goto)
-        {
-            inst.label = rest; return inst;
+        auto trim_str = [](const std::string& s) {
+            size_t start = s.find_first_not_of(" \t\r\n");
+            size_t end = s.find_last_not_of(" \t\r\n");
+            if (start == std::string::npos) return std::string("");
+            return s.substr(start, end - start + 1);
+            };
+
+        if (inst.type == GateType::Label || inst.type == GateType::Goto) {
+            inst.label = trim_str(rest); return inst;
         }
 
         if (inst.type == GateType::Conditional) {
-            size_t fb = rest.find('{');
-            std::string hdr = (fb == std::string::npos) ? rest : rest.substr(0, fb - 1);
-            auto htok = SplitTokens(hdr);
-            if (htok.size() >= 2) {
-                inst.qubits.push_back(std::stoi(htok[0]));
-                inst.expected_val = std::stoi(htok[1]);
+            auto blocks = SplitTopLevelBlocks(rest);
+            if (blocks.empty()) return inst;
+
+            // 1. 解析條件區塊 blocks[0] (例如 "{M, 0}" 或 "{0, 0}")
+            std::string cond_str = trim_str(blocks[0]);
+            if (cond_str.front() == '{') cond_str.erase(0, 1);
+            if (cond_str.back() == '}') cond_str.pop_back();
+
+            auto cond_toks = SplitTokens(cond_str);
+            if (!cond_toks.empty()) {
+                std::string t0 = trim_str(cond_toks[0]);
+                if (t0 == "M" || t0 == "Measure") {
+                    inst.condition_is_measure = true;
+                    if (cond_toks.size() > 1) inst.qubits.push_back(std::stoi(trim_str(cond_toks[1])));
+                    if (cond_toks.size() > 2) inst.expected_val = std::stoi(trim_str(cond_toks[2]));
+                    else inst.expected_val = 1; // 預設值
+                }
+                else {
+                    inst.condition_is_measure = false;
+                    inst.qubits.push_back(std::stoi(t0));
+                    if (cond_toks.size() > 1) inst.expected_val = std::stoi(trim_str(cond_toks[1]));
+                    else inst.expected_val = 1; // 預設值
+                }
             }
-            if (fb != std::string::npos)
-                for (const auto& s : SplitTopLevelBlocks(rest.substr(fb)))
-                    inst.sub_insts.push_back(ParseBlock(s));
+
+            // 2. 解析後續的子指令 blocks[1...N]
+            for (size_t i = 1; i < blocks.size(); i++) {
+                inst.sub_insts.push_back(ParseBlock(blocks[i]));
+            }
             return inst;
         }
 
         std::pair<int, int> sig = GateSignature(inst.type);
         int nq = sig.first, np = sig.second;
         if (nq == -1) {
-            for (const auto& t : SplitTokens(rest)) inst.qubits.push_back(std::stoi(t));
+            for (const auto& t : SplitTokens(rest)) inst.qubits.push_back(std::stoi(trim_str(t)));
         }
         else {
             auto toks = SplitTokens(rest);
-            for (int i = 0; i < nq && i < (int)toks.size(); i++) inst.qubits.push_back(std::stoi(toks[i]));
-            if (np > 0 && nq < (int)toks.size()) inst.param = std::stod(toks[nq]);
+            for (int i = 0; i < nq && i < (int)toks.size(); i++) inst.qubits.push_back(std::stoi(trim_str(toks[i])));
+            if (np > 0 && nq < (int)toks.size()) inst.param = std::stod(trim_str(toks[nq]));
         }
         return inst;
     }
@@ -1347,45 +1380,122 @@ private:
     static int ExecuteOne(const CircuitInstruction& inst, Qubit_Simulation& sim,
         const std::unordered_map<std::string, int>& lm,
         const SimulationConfig& cfg, std::mt19937_64& rng,
-        ErrorRecord& err) {
-        switch (inst.type) {
-        case GateType::H:  case GateType::X:  case GateType::Y:
-        case GateType::Z:  case GateType::S:  case GateType::Sdg:
-        case GateType::T:  case GateType::Tdg:
-            sim.ApplySingleQubitGate(inst.qubits[0], inst.type); return -1;
-        case GateType::Rx: case GateType::Ry: case GateType::Rz:
-            sim.ApplySingleQubitGate(inst.qubits[0], inst.type, inst.param); return -1;
-        case GateType::CNOT:  case GateType::CZ:
-        case GateType::SWAP:  case GateType::iSWAP: case GateType::SqrtSWAP:
-            sim.ApplyTwoQubitGate(inst.qubits[0], inst.qubits[1], inst.type);
-            HandleError(inst, sim, cfg, rng, err); return -1;
-        case GateType::CCNOT: case GateType::CSWAP:
-            sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1], inst.qubits[2], inst.type);
-            HandleError(inst, sim, cfg, rng, err); return -1;
-        case GateType::Deutsch:
-            sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1], inst.qubits[2], inst.type, inst.param);
-            HandleError(inst, sim, cfg, rng, err); return -1;
-        case GateType::Measure:  sim.ObserverQubit(inst.qubits[0]); return -1;
-        case GateType::Parity:   sim.MeasureParity(inst.qubits);    return -1;
-        case GateType::Label:    return -1;
-        case GateType::Goto: {
+        ErrorRecord& err, std::vector<double>& q_errs) {
+
+        // ── 經典控制流（直接處理並回傳，不牽涉量子誤差） ──
+        if (inst.type == GateType::Label) return -1;
+        if (inst.type == GateType::Goto) {
             auto it = lm.find(inst.label);
             return (it != lm.end()) ? it->second : -1;
         }
-        case GateType::Conditional: {
-            int meas = sim.ObserverQubit(inst.qubits[0]);
-            if (meas == inst.expected_val)
+        if (inst.type == GateType::Conditional) {
+            int q = inst.qubits[0];
+
+            if (inst.condition_is_measure) {
+                // 如果條件區塊要求當下測量，則執行測量並歸零誤差
+                sim.ObserverQubit(q);
+                q_errs[q] = 0.0;
+            }
+            else {
+                // 如果只提供 qubit 標籤，則必須已經坍縮
+                if (!sim.IsObservered(q)) {
+                    throw std::runtime_error("IF 條件錯誤：目標 Qubit 尚未坍縮，且未在 IF 條件中指定測量！");
+                }
+            }
+
+            int meas = sim.GetMeasurementResult(q);
+            if (meas == inst.expected_val) {
                 for (const auto& sub : inst.sub_insts) {
                     ErrorRecord se;
-                    int jump = ExecuteOne(sub, sim, lm, cfg, rng, se);
+                    int jump = ExecuteOne(sub, sim, lm, cfg, rng, se, q_errs);
                     if (se.occurred && !err.occurred) err = se;
                     err.gate_error_prob += se.gate_error_prob;
                     if (jump >= 0) return jump;
                 }
+            }
             return -1;
         }
-        default: return -1;
+
+        // ── 量子操作與誤差前置計算 ──
+        bool is2 = IsTwoQubitGate(inst.type);
+        bool is3 = IsThreeQubitGate(inst.type);
+
+        double p = cfg.error_rate;
+        if (is3) p = std::min(1.0, p * cfg.three_qubit_error_mult);
+
+        double e_comb = 0.0;
+        if (is2 || is3) {
+            err.gate_error_prob = p;
+            if (is2 && inst.qubits.size() >= 2) {
+                int q1 = inst.qubits[0], q2 = inst.qubits[1];
+                e_comb = 1.0 - (1.0 - q_errs[q1]) * (1.0 - q_errs[q2]) * (1.0 - p);
+            }
+            else if (is3 && inst.qubits.size() >= 3) {
+                int q1 = inst.qubits[0], q2 = inst.qubits[1], q3 = inst.qubits[2];
+                e_comb = 1.0 - (1.0 - q_errs[q1]) * (1.0 - q_errs[q2]) * (1.0 - q_errs[q3]) * (1.0 - p);
+            }
         }
+
+        // ── 執行量子邏輯閘 ──
+        switch (inst.type) {
+        case GateType::H:  case GateType::X:  case GateType::Y:
+        case GateType::Z:  case GateType::S:  case GateType::Sdg:
+        case GateType::T:  case GateType::Tdg:
+            sim.ApplySingleQubitGate(inst.qubits[0], inst.type); break;
+        case GateType::Rx: case GateType::Ry: case GateType::Rz:
+            sim.ApplySingleQubitGate(inst.qubits[0], inst.type, inst.param); break;
+        case GateType::CNOT:  case GateType::CZ:
+        case GateType::SWAP:  case GateType::iSWAP: case GateType::SqrtSWAP:
+            sim.ApplyTwoQubitGate(inst.qubits[0], inst.qubits[1], inst.type);
+            HandleError(inst, sim, cfg, rng, err); break;
+        case GateType::CCNOT: case GateType::CSWAP:
+            sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1], inst.qubits[2], inst.type);
+            HandleError(inst, sim, cfg, rng, err); break;
+        case GateType::Deutsch:
+            sim.ApplyThreeQubitGate(inst.qubits[0], inst.qubits[1], inst.qubits[2], inst.type, inst.param);
+            HandleError(inst, sim, cfg, rng, err); break;
+        case GateType::Measure:
+            sim.ObserverQubit(inst.qubits[0]); break;
+        case GateType::Parity:
+            sim.MeasureParity(inst.qubits);    break;
+        default: break;
+        }
+
+        // ── 誤差擴散與脫離糾纏歸零機制 ──
+        auto groups = sim.GetEntangledGroups();
+        for (const auto& g : groups) {
+            // 規則一：如果該 Qubit 脫離糾纏成為獨立狀態 (Size == 1)，其誤差立刻歸零
+            if (g.qubit_ids.size() == 1) {
+                q_errs[g.qubit_ids[0]] = 0.0;
+            }
+            // 規則二：若剛才執行多量子閘，且該群組包含剛才被操作的目標位元，將新誤差「擴散」給該群組內「所有」位元
+            else if (is2 || is3) {
+                bool hit = false;
+                for (int t : inst.qubits) {
+                    if (std::find(g.qubit_ids.begin(), g.qubit_ids.end(), t) != g.qubit_ids.end()) {
+                        hit = true; break;
+                    }
+                }
+                if (hit) {
+                    for (int q : g.qubit_ids) {
+                        q_errs[q] = e_comb;
+                    }
+                }
+            }
+        }
+
+        // 規則三：測量歸零 (包含單點測量與宇稱測量)
+        if (inst.type == GateType::Parity) {
+            for (int q : inst.qubits) {
+                q_errs[q] = 0.0; // 參與宇稱測量的 Qubit 誤差強制歸零
+            }
+        }
+
+        for (int q = 0; q < sim.GetQubitAmount(); ++q) {
+            if (sim.IsObservered(q)) q_errs[q] = 0.0;
+        }
+
+        return -1;
     }
 
     static StepSnapshot TakeSnapshot(const CircuitInstruction& inst,
@@ -1638,20 +1748,34 @@ private:
         out << Row('-', W) << "\n";
 
         // 誤差記錄（如果 track_errors 打開）
-        if (result.snapshots[0].error_record.gate_error_prob > 0.0) {
-            out << " [Error] "
-                << "gate_prob=" << FmtPct(snap.error_record.gate_error_prob)
-                << "  accum_theory=" << FmtPct(snap.theoretical_error_accum)
-                << "  total_hits=" << snap.cumulative_errors;
-            if (snap.error_record.occurred)
-                out << "  *** "
-                << ErrorTypeName(snap.error_record.type)
-                << " on Q" << snap.error_record.affected_qubit << " ***";
-            out << "\n\n";
+        if (result.config.track_errors) {
+            bool has_error_risk = (snap.error_record.gate_error_prob > 0.0);
+            bool has_accum_err = false;
+            for (double e : snap.qubit_error_accum) { if (e > 1e-9) has_accum_err = true; }
+
+            if (has_error_risk || has_accum_err) {
+                out << " [Error]";
+                if (has_error_risk) out << " gate_prob=" << FmtPct(snap.error_record.gate_error_prob);
+                out << "  total_hits=" << snap.cumulative_errors << "\n";
+
+                out << "  -> Qubit Errors: ";
+                for (int q = 0; q < num_qubits; q++) {
+                    if (snap.qubit_error_accum[q] > 1e-9) {
+                        out << "Q" << q << "=" << FmtPct(snap.qubit_error_accum[q]) << "  ";
+                    }
+                }
+                out << "\n";
+
+                if (snap.error_record.occurred)
+                    out << "  *** " << ErrorTypeName(snap.error_record.type)
+                    << " applied on Q" << snap.error_record.affected_qubit << " ***\n";
+                out << "\n";
+            }
         }
 
         // 測量結果
         bool any_meas = false;
+        // ... (下方這段印出測量結果與 Quantum State 的迴圈完全保持原樣不變)
         for (int q = 0; q < num_qubits; q++) {
             auto it = snap.measurements.find(q);
             if (it != snap.measurements.end() && it->second != -1) {
@@ -1740,12 +1864,21 @@ private:
         if (result.snapshots.empty()) return;
 
         int total_errors = result.snapshots.back().cumulative_errors;
-        double final_accum = result.snapshots.back().theoretical_error_accum;
+        const auto& final_errs = result.snapshots.back().qubit_error_accum;
 
-        out << " Total error occurrences: " << total_errors << "\n";
-        out << " Accumulated error prob:  " << FmtPct(final_accum) << "\n";
+        out << " Total physical error occurrences: " << total_errors << "\n";
+        out << " Final theoretical error probability per Qubit:\n";
+        for (int q = 0; q < result.num_qubits; q++) {
+            if (final_errs[q] > 1e-9) {
+                out << "   Q[" << q << "]: " << FmtPct(final_errs[q]) << "\n";
+            }
+            else {
+                out << "   Q[" << q << "]: 0.00% (Clean or Collapsed)\n";
+            }
+        }
         out << "\n";
     }
+
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1789,58 +1922,49 @@ private:
     void CmdManual() {
         std::cout << "\n================ 量子電路操作手冊 ================\n";
         std::cout << "[基本架構與語法]\n";
-        std::cout << "本模擬器用於模擬量子位元 (Qubits) 的演化[cite: 1]。\n";
+        std::cout << "本模擬器用於模擬量子位元 (Qubits) 的演化。\n";
         std::cout << "指令語法必須用雙引號 \"\" 包起來，格式如下：\n";
         std::cout << "  \"<總量子位元數>, {量子閘, 目標1, 目標2...}, {量子閘...}\"\n\n";
 
         std::cout << "[所有可用的量子電路組件 (GateTypes)]\n";
-        std::cout << "1. 基本單量子位元閘 (需 1 個目標位元)[cite: 1]:\n";
+        std::cout << "1. 基本單量子位元閘 (需 1 個目標位元):\n";
         std::cout << "   - H    : Hadamard 閘 (創造均勻疊加態)\n";
-        std::cout << "   - X    : Pauli-X 閘 (量子 NOT 閘，0變1，1變0)\n";
-        std::cout << "   - Y    : Pauli-Y 閘\n";
-        std::cout << "   - Z    : Pauli-Z 閘 (相位反轉)\n";
-        std::cout << "   - S    : S 閘 (繞 Z 軸旋轉 90 度)\n";
-        std::cout << "   - Sdg  : S-dagger 閘 (S 閘的共軛轉置)\n";
-        std::cout << "   - T    : T 閘 (繞 Z 軸旋轉 45 度)\n";
-        std::cout << "   - Tdg  : T-dagger 閘 (T 閘的共軛轉置)\n\n";
+        std::cout << "   - X,Y,Z: Pauli 閘系列 (X為量子NOT，Z為相位反轉)\n";
+        std::cout << "   - S,Sdg: 相位旋轉 90 度與其共軛\n";
+        std::cout << "   - T,Tdg: 相位旋轉 45 度與其共軛\n\n";
 
-        std::cout << "2. 參數化單量子位元閘 (需 1 個目標位元 + 1 個角度參數)[cite: 1]:\n";
-        std::cout << "   (角度單位為度數 degree)\n";
-        std::cout << "   - Rx   : 繞 X 軸旋轉 (例如: {Rx,0,90})\n";
-        std::cout << "   - Ry   : 繞 Y 軸旋轉\n";
-        std::cout << "   - Rz   : 繞 Z 軸旋轉\n\n";
+        std::cout << "2. 參數化單量子位元閘 (需 1 個角度參數，單位: 度數):\n";
+        std::cout << "   - Rx, Ry, Rz : 繞對應軸旋轉 (例如: {Rx,0,90})\n\n";
 
-        std::cout << "3. 雙量子位元閘 (需 2 個目標位元)[cite: 1]:\n";
-        std::cout << "   - CNOT     : 控制反轉閘 (Control-NOT，參數順序: 控制位元, 目標位元)\n";
-        std::cout << "   - CZ       : 控制相位閘 (Control-Z)\n";
-        std::cout << "   - SWAP     : 交換閘 (交換兩個位元狀態)\n";
-        std::cout << "   - iSWAP    : 虛數交換閘\n";
-        std::cout << "   - SqrtSWAP : 平方根交換閘\n\n";
+        std::cout << "3. 雙/三量子位元閘:\n";
+        std::cout << "   - CNOT, CZ       : 雙位元控制閘\n";
+        std::cout << "   - SWAP系列       : SWAP, iSWAP, SqrtSWAP\n";
+        std::cout << "   - CCNOT, CSWAP   : 三位元控制閘\n";
+        std::cout << "   - Deutsch        : 需額外 1 個角度 (例如: {Deutsch,0,1,2,45})\n\n";
 
-        std::cout << "4. 三量子位元閘 (需 3 個目標位元)[cite: 1]:\n";
-        std::cout << "   - CCNOT    : Toffoli 閘 (雙控制 NOT，順序: 控1, 控2, 目標)\n";
-        std::cout << "   - CSWAP    : Fredkin 閘 (控制交換閘)\n";
-        std::cout << "   - Deutsch  : Deutsch 閘 (需額外 1 個角度參數，例如: {Deutsch,0,1,2,45})\n\n";
+        std::cout << "4. 測量與經典控制流 (Measurement & Flow):\n";
+        std::cout << "   - M / Measure: 測量單一量子位元並坍縮。測量後該位元退出糾纏，累積的物理誤差歸零。\n";
+        std::cout << "   - Parity     : 測量多個量子位元的宇稱。參與的位元也會將誤差歸零。\n";
+        std::cout << "   - Label, Goto: 跳轉標籤與執行跳轉。\n";
+        std::cout << "   - If         : 條件分支 (條件可為動態測量，或檢查已坍縮的狀態)\n";
+        std::cout << "                  格式: {If, {條件}, {指令...}}\n";
+        std::cout << "                  [條件寫法]\n";
+        std::cout << "                  1. {M, q, val} : 對 q 測量，預期值為 val (若省略 val 則預設為 1)\n";
+        std::cout << "                  2. {q, val}    : 檢查已坍縮的 q，預期值為 val (若省略 val 則預設為 1)\n";
+        std::cout << "                  範例1: {If, {M, 0}, {X, 1}}       (當下測量 Q0，若為 1 則對 Q1 做 X 閘)\n";
+        std::cout << "                  範例2: {If, {M, 0, 0}, {X, 1}}    (當下測量 Q0，若為 0 則對 Q1 做 X 閘)\n";
+        std::cout << "                  範例3: {M, 0}, {If, {0}, {X, 1}}  (先測量 Q0，後續純判斷 Q0 若為 1 則執行)\n\n";
 
-        std::cout << "5. 測量與控制流 (Measurement & Flow)[cite: 1]:\n";
-        std::cout << "   - M / Measure: 測量單一量子位元並坍縮 (例如: {M,0})\n";
-        std::cout << "   - Parity     : 測量多個量子位元的宇稱 (例如: {Parity,0,1,2})\n";
-        std::cout << "   - Label      : 設定跳轉標籤 (例如: {Label,loop_start})\n";
-        std::cout << "   - Goto       : 跳轉至特定標籤 (例如: {Goto,loop_start})\n";
-        std::cout << "   - If         : 條件分支，若測量等於預期則執行內部指令。\n";
-        std::cout << "                  格式: {If, 目標位元, 預期值, {指令...}}\n";
-        std::cout << "                  (例如: {If,0,1,{X,1}}，若 Q0=1 則對 Q1 做 X 閘)\n\n";
+        std::cout << "[物理誤差模型與糾纏動態 (Error Diffusion)]\n";
+        std::cout << "  本模擬器採用真實的「誤差局部擴散與脫離機制」：\n";
+        std::cout << "  - 單量子閘不引發新誤差；多量子閘會依據 error_rate 引發誤差。\n";
+        std::cout << "  - 誤差擴散：當發生糾纏時，誤差會擴散到該糾纏群組的「所有」位元。\n";
+        std::cout << "              若 Q0, Q1 先糾纏，隨後 Q1 與 Q2 糾纏，則 Q1, Q2 的新誤差也會回傳擴散給 Q0。\n";
+        std::cout << "  - 誤差歸零：當一個量子位元因為特定運算或測量而「脫離糾纏」(成為獨立狀態)，其物理誤差立即歸零。\n\n";
 
         std::cout << "[經典示範 (Examples)]\n";
-        std::cout << "▶ 範例 1：建立兩量子位元的貝爾態 (Bell State，最大糾纏態)\n";
-        std::cout << "  輸入: run \"2, {H,0}, {CNOT,0,1}\"\n";
-        std::cout << "  說明: 準備 2 個位元，先對 Q0 用 H 閘變成 0 與 1 的疊加態，再用 CNOT 閘將\n";
-        std::cout << "        Q0 與 Q1 綁定。最終狀態為 |00> 與 |11> 各 50% 機率。\n\n";
-
-        std::cout << "▶ 範例 2：量子遙傳 (Quantum Teleportation) 簡化結構與動態控制\n";
+        std::cout << "▶ 量子遙傳 (Quantum Teleportation)\n";
         std::cout << "  輸入: run \"3, {H,1}, {CNOT,1,2}, {CNOT,0,1}, {H,0}, {M,0}, {M,1}, {If,1,1,{X,2}}, {If,0,1,{Z,2}}\"\n";
-        std::cout << "  說明: 此電路將未知的量子態從 Q0 傳遞到 Q2。過程包含建立糾纏(Q1,Q2)、\n";
-        std::cout << "        貝爾測量(Q0,Q1)，以及透過 'If' 條件控制對 Q2 進行 X 或 Z 閘修正。\n";
         std::cout << "==================================================\n\n";
     }
 
