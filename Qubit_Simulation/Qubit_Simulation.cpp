@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <vector>
 #include <unordered_map>
+#include <map>
 #include <cmath>
 #include <random>
 #include <boost/multiprecision/cpp_int.hpp>
@@ -20,6 +21,55 @@ static constexpr const long long int Tolerent_Round = 1LL << 10;
  * 因此使用long long配合定點數可以有效的解決運算中的浮點誤差問題
  * 以2^62為縮放基準
  */
+
+ // ── 閘的種類 ─────────────────────────────────────────
+enum class GateType {
+	Identity,
+	// 單 qubit
+	H, X, Y, Z, S, Sdg, T, Tdg,
+	Rx, Ry, Rz,
+	// 雙 qubit
+	CNOT, CZ, SWAP, iSWAP, SqrtSWAP,
+	// 三 qubit
+	CCNOT, CSWAP, Deutsch,
+	// 特殊
+	Measure,
+	Custom
+};
+
+// ── 表格中一格的內容 ──────────────────────────────────
+struct GateCell {
+	GateType            type = GateType::Identity;
+	std::vector<double> params = {};   // Rx/Ry/Rz 的角度，Deutsch 的角度
+	int                 link_qubit = -1;   // 多 qubit 閘的另一個/控制 qubit
+	int                 link_qubit2 = -1;   // 三 qubit 閘的第三個 qubit
+	bool                is_primary = true; // 多 qubit 閘只由 primary 觸發執行
+	std::string         custom_name = "";   // 自訂閘名稱
+};
+
+// ── 每個 time step 執行後的快照 ───────────────────────
+struct StepSnapshot {
+	int	step;
+	// set_id → {qubit列表, 狀態向量}
+
+	std::map<int, std::pair<std::vector<int>,
+	std::vector<std::pair<double, double>>>> entangled_sets;
+
+	// qubit → 測量結果（-1 代表尚未測量）
+
+	std::map<int, int>                           measurement;
+
+	// qubit → {P(0), P(1)}
+	std::map<int, std::pair<double, double>>      probabilities;
+};
+
+// ── 整份電路的執行結果 ────────────────────────────────
+
+struct CircuitResult {
+	int                     num_qubits;
+	int                     num_steps;
+	std::vector<StepSnapshot> snapshots;   // 每個 time step 一份
+};
 
 
 class FixedComplex {
@@ -1765,6 +1815,119 @@ public:
 
 
 };
+
+class CircuitTable {
+
+public:
+
+	// table[qubit][time_step]
+	std::vector<std::vector<GateCell>> table;
+	int num_qubits, num_steps;
+
+	CircuitTable(int qubits, int steps)
+		: num_qubits(qubits), num_steps(steps),
+		table(qubits, std::vector<GateCell>(steps)) {
+	}
+
+	// ── 單 qubit 閘 ────────────────────────────────
+	void SetGate(int qubit, int time, GateType type,
+		std::vector<double> params = {}) {
+		table[qubit][time] = { type, params };
+	}
+
+	// ── 雙 qubit 閘：ctrl 是 primary ───────────────
+	void SetTwoQubitGate(int primary, int secondary,
+		int time, GateType type,
+		std::vector<double> params = {}) {
+		table[primary][time] = { type, params, secondary, -1, true };
+		table[secondary][time] = { type, params, primary,  -1, false };
+	}
+
+	// ── 三 qubit 閘：q0 是 primary ─────────────────
+	void SetThreeQubitGate(int q0, int q1, int q2,
+		int time, GateType type,
+		std::vector<double> params = {}) {
+		table[q0][time] = { type, params, q1, q2, true };
+		table[q1][time] = { type, params, q0, q2, false };
+		table[q2][time] = { type, params, q0, q1, false };
+	}
+
+	// ── 測量 ────────────────────────────────────────
+	void SetMeasure(int qubit, int time) {
+		table[qubit][time] = { GateType::Measure };
+	}
+
+	// ── 執行並回傳結果 ───────────────────────────────
+	CircuitResult Execute(Qubit_Simulation& sim) const {
+
+		CircuitResult result{ num_qubits, num_steps };
+
+		for (int t = 0; t < num_steps; t++) {
+
+			// 執行這個 time step 的所有閘
+			for (int q = 0; q < num_qubits; q++) {
+				const GateCell& cell = table[q][t];
+				if (!cell.is_primary) continue;  // 多 qubit 閘只執行一次
+				ApplyGate(sim, q, cell);
+			}
+
+			// 記錄這個 time step 的快照
+			result.snapshots.push_back(TakeSnapshot(sim, t));
+		}
+
+		return result;
+	}
+
+private:
+
+	void ApplyGate(Qubit_Simulation& sim,
+		int qubit, const GateCell& cell) const {
+		switch (cell.type) {
+		case GateType::H:       sim.HadamardGate(qubit); break;
+		case GateType::X:       sim.XGate(qubit);        break;
+		case GateType::Y:       sim.YGate(qubit);        break;
+		case GateType::Z:       sim.ZGate(qubit);        break;
+		case GateType::S:       sim.SGate(qubit);        break;
+		case GateType::Sdg:     sim.SdgGate(qubit);      break;
+		case GateType::T:       sim.TGate(qubit);        break;
+		case GateType::Tdg:     sim.TdgGate(qubit);      break;
+		case GateType::Rx:      sim.RxGate(qubit, cell.params[0]); break;
+		case GateType::Ry:      sim.RyGate(qubit, cell.params[0]); break;
+		case GateType::Rz:      sim.RzGate(qubit, cell.params[0]); break;
+
+		case GateType::CNOT:    sim.CNOTGate(qubit, cell.link_qubit);  break;
+		case GateType::CZ:      sim.CZGate(qubit, cell.link_qubit);    break;
+		case GateType::SWAP:    sim.SWAPGate(qubit, cell.link_qubit);  break;
+		case GateType::iSWAP:   sim.ISWAPGate(qubit, cell.link_qubit); break;
+		case GateType::SqrtSWAP:sim.SqrtSWAPGate(qubit, cell.link_qubit); break;
+
+		case GateType::CCNOT:
+			sim.CCNOTGate(qubit, cell.link_qubit, cell.link_qubit2); break;
+		case GateType::CSWAP:
+			sim.CSWAPGate(qubit, cell.link_qubit, cell.link_qubit2); break;
+		case GateType::Deutsch:
+			sim.DeutschGate(qubit, cell.link_qubit,
+				cell.link_qubit2, cell.params[0]);       break;
+
+		case GateType::Measure: sim.ObserverQubit(qubit); break;
+		default: break;
+		}
+	}
+
+	StepSnapshot TakeSnapshot(Qubit_Simulation& sim, int step) const {
+		// 這裡需要 Qubit_Simulation 開放幾個查詢介面
+		// 目前你的 OuputEntangledQubitSet 可以先用
+		// 建議補充以下三個 getter：
+		//   GetEntangledSets()   → 所有 set 的資料
+		//   GetProbabilities(q)  → {P0, P1}
+		//   GetMeasurement(q)    → 結果或 -1
+		StepSnapshot snap;
+		snap.step = step;
+		// ... 填入資料
+		return snap;
+	}
+};
+
 
 int main() {
 
