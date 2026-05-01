@@ -1740,6 +1740,11 @@ public:
 	// ──────────────────────────────────────────────────────
 	void Execute(Qubit_Simulation& sim) const {
 
+		sim.ResetQubitSet();
+
+		for (int count = 0; count < num_qubits; count++)
+			sim.GenerateQubit();
+
 		// 預先建立 label → index 對照表
 		std::unordered_map<std::string, int> label_map;
 		for (int i = 0; i < static_cast<int>(instructions.size()); i++)
@@ -2041,13 +2046,14 @@ private:
 };
 
 
+
 int main() {
 
 	Qubit_Simulation sim = Qubit_Simulation();
 
 	auto circuit = CircuitExpression::Parse("3, {H,0}, {CNOT,0,1}");
 	circuit.Execute(sim);
-
+	sim.OuputEntangledQubitSet(0);
 
 }
 
