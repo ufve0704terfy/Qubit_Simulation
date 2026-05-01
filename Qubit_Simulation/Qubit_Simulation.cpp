@@ -14,6 +14,7 @@ static constexpr const int Fixed_shift = 62;
 static constexpr const double Root_half = 0.70710678118;
 static constexpr const double Pi = 3.141592658979;
 static constexpr const unsigned long long int Fixed_Pi = 14488038916154245120ULL;
+static constexpr const long long int Tolerent_Round = 1LL << 10;
 
 /*qubit中的複數的虛數部份以及實數部分都介於-1~1
  * 因此使用long long配合定點數可以有效的解決運算中的浮點誤差問題
@@ -1016,6 +1017,131 @@ private:
 
 	}
 
+	bool IsSeparable(const int qubit) {
+
+		if (IsQubitUnoperable(qubit)) return false;
+
+		// 只有一個 qubit 的 set 本來就是獨立的
+		if (Entangled_Qubit_Set[qubit]->first.size() == 1) return true;
+
+		int q_pos = GetSituation(qubit);
+		std::vector<FixedComplex>& state = Entangled_Qubit_Set[qubit]->second;
+		size_t half = state.size() >> 1;
+
+		// 找第一個非零的參考振幅對
+		long long ref0_R = 0, ref0_I = 0;
+		long long ref1_R = 0, ref1_I = 0;
+		bool found_ref = false;
+
+		for (size_t count = 0; count < half; count++) {
+
+			unsigned long long idx0 = BitAdd(count, q_pos, 0ULL);
+			unsigned long long idx1 = BitAdd(count, q_pos, 1ULL);
+
+			FixedComplex amp0 = state[idx0];
+			FixedComplex amp1 = state[idx1];
+
+			bool amp0_zero = (amp0.Real == 0 && amp0.Imaginary == 0);
+			bool amp1_zero = (amp1.Real == 0 && amp1.Imaginary == 0);
+
+			if (!found_ref) {
+				if (!amp0_zero || !amp1_zero) {
+					ref0_R = amp0.Real; ref0_I = amp0.Imaginary;
+					ref1_R = amp1.Real; ref1_I = amp1.Imaginary;
+					found_ref = true;
+				}
+				continue;
+			}
+
+			// 驗證交叉乘積：amp0 * ref1 == amp1 * ref0
+			// (amp0_R + i·amp0_I)(ref1_R - i·ref1_I)
+			// == (amp1_R + i·amp1_I)(ref0_R - i·ref0_I)
+			int128_t lhs_R = (int128_t)amp0.Real * ref1_R + (int128_t)amp0.Imaginary * ref1_I;
+			int128_t lhs_I = (int128_t)amp0.Imaginary * ref1_R - (int128_t)amp0.Real * ref1_I;
+
+			int128_t rhs_R = (int128_t)amp1.Real * ref0_R + (int128_t)amp1.Imaginary * ref0_I;
+			int128_t rhs_I = (int128_t)amp1.Imaginary * ref0_R - (int128_t)amp1.Real * ref0_I;
+
+			if (QMath::NewtonSqrt((lhs_R - rhs_R) * (lhs_R - rhs_R) + (lhs_I - rhs_I) * (lhs_I - rhs_I)) > Tolerent_Round)
+				return false;
+		}
+
+		return true;
+	}
+
+	void ExtractSeparatedQubit(const int qubit) {
+
+		if (!IsSeparable(qubit)) return;
+		if (Entangled_Qubit_Set[qubit]->first.size() == 1) return;
+
+		int q_pos = GetSituation(qubit);
+		std::vector<FixedComplex>& state = Entangled_Qubit_Set[qubit]->second;
+		size_t half = state.size() >> 1;
+
+
+		int128_t P0 = 0, P1 = 0;
+		for (size_t count = 0; count < half; count++) {
+			FixedComplex amp0 = state[BitAdd(count, q_pos, 0ULL)];
+			FixedComplex amp1 = state[BitAdd(count, q_pos, 1ULL)];
+
+			int128_t abs0 = QMath::AbsoluteValue(amp0);
+			int128_t abs1 = QMath::AbsoluteValue(amp1);
+			P0 += (abs0 * abs0) >> Fixed_shift;
+			P1 += (abs1 * abs1) >> Fixed_shift;
+		}
+
+		long long abs_a = QMath::NewtonSqrt(P0 << Fixed_shift);
+		long long abs_b = QMath::NewtonSqrt(P1 << Fixed_shift);
+
+		FixedComplex qubit_amp0 = FixedComplex(abs_a);
+		FixedComplex qubit_amp1 = FixedComplex();
+
+		for (size_t count = 0; count < half; count++) {
+			FixedComplex amp0 = state[BitAdd(count, q_pos, 0ULL)];
+			FixedComplex amp1 = state[BitAdd(count, q_pos, 1ULL)];
+
+			bool amp0_zero = (amp0.Real == 0 && amp0.Imaginary == 0);
+
+			if (!amp0_zero) {
+
+				qubit_amp1 = (amp1 / amp0) * abs_a;
+				break;
+			}
+
+			if (amp0_zero && (amp1.Real != 0 || amp1.Imaginary != 0)) {
+				qubit_amp0 = FixedComplex(0LL);
+				qubit_amp1 = FixedComplex(abs_b);
+				break;
+			}
+		}
+
+		std::vector<FixedComplex> new_state(half, FixedComplex());
+		bool use_a = (qubit_amp0.Real != 0 || qubit_amp0.Imaginary != 0);
+
+		for (size_t count = 0; count < half; count++) {
+			FixedComplex amp = use_a
+				? state[BitAdd(count, q_pos, 0ULL)]
+				: state[BitAdd(count, q_pos, 1ULL)];
+
+			FixedComplex divisor = use_a ? qubit_amp0 : qubit_amp1;
+			new_state[count] = amp / divisor;
+		}
+
+		std::vector<int>& qubit_names = Entangled_Qubit_Set[qubit]->first;
+		qubit_names.erase(
+			std::remove(qubit_names.begin(), qubit_names.end(), qubit),
+			qubit_names.end()
+		);
+
+		Entangled_Qubit_Set[qubit]->second = new_state;
+
+		Entangled_Qubit_Set_Pointer[qubit] = {
+			{ qubit },
+			{ qubit_amp0, qubit_amp1 }
+		};
+		Entangled_Qubit_Set[qubit] = &Entangled_Qubit_Set_Pointer[qubit];
+	}
+
 public:
 
 	Qubit_Simulation() :Qubit_Amount(0) { Entangled_Qubit_Set.clear(); Qubit_Set_Observation.clear(); Entangled_Qubit_Set_Pointer.clear(); };
@@ -1457,6 +1583,9 @@ public:
 			std::swap(Entangled_Qubit_Set[controlQubit]->second[BitAdd(count, { {Qubit_Situation1,1},{Qubit_Situation2,1} })],
 				Entangled_Qubit_Set[controlQubit]->second[BitAdd(count, { {Qubit_Situation1,1},{Qubit_Situation2,0} })]);
 
+		ExtractSeparatedQubit(controlQubit);
+		ExtractSeparatedQubit(targetQubit);
+
 	}
 
 	void CZGate(const int controlQubit, const int targetQubit) {
@@ -1660,10 +1789,17 @@ int main() {
 	a.HadamardGate(0);
 	a.CNOTGate(0, 1);
 	a.OuputEntangledQubitSet(0);
-	a.HadamardGate(1);
+	//a.HadamardGate(1);
+	//a.OuputEntangledQubitSet(0);
 
+	a.CNOTGate(1, 2);
+	a.OuputEntangledQubitSet(0);
+
+	a.CNOTGate(2, 1);
 	a.OuputEntangledQubitSet(0);
 	std::cout << std::endl;
+
+
 	std::cout << a.ObserverQubit(0) << std::endl;
 	std::cout << a.ObserverQubit(1) << std::endl;
 
