@@ -7,3 +7,8 @@ x86/
 *.exe
 *.obj
 *.pdb
+Qubit_Simulation.vcxproj.user
+Qubit_Simulation.vcxproj.filters
+Qubit_Simulation.vcxproj
+Qubit_Simulation.sln
+packages.config

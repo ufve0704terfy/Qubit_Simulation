@@ -1729,27 +1729,226 @@ private:
 };
 
 // ══════════════════════════════════════════════════════════════
-// 測試程式
+// Console 控制台類別 (更新版：完整指令手冊)
 // ══════════════════════════════════════════════════════════════
 
+class Console {
+private:
+    Qubit_Simulation sim;
+    SimulationConfig config;
+    CircuitExpression last_circuit;
+    CircuitResult last_result;
+    bool has_result = false;
+
+    // 輔助函式：去除字串前後空白
+    std::string Trim(const std::string& s) {
+        size_t start = s.find_first_not_of(" \t\r\n");
+        size_t end = s.find_last_not_of(" \t\r\n");
+        if (start == std::string::npos) return "";
+        return s.substr(start, end - start + 1);
+    }
+
+    void PrintIntro() {
+        std::cout << "======================================================\n";
+        std::cout << "         歡迎使用量子電路模擬器 (Quantum Console)       \n";
+        std::cout << "======================================================\n";
+        std::cout << "初始狀態已載入。輸入 'help' 可以查看基本指令與操作方式。\n\n";
+    }
+
+    void CmdHelp() {
+        std::cout << "\n[可用指令列表]\n";
+        std::cout << "  help           : 顯示此指令列表\n";
+        std::cout << "  manual         : 顯示量子電路詳細操作手冊、所有支援的閘與範例\n";
+        std::cout << "  config         : 設定參數 (如: config error_rate 0.05)\n";
+        std::cout << "  run \"<expr>\"   : 執行電路，表達式必須用雙引號包裝\n";
+        std::cout << "                   (例如: run \"3, {H,0}, {CNOT,0,1}\")\n";
+        std::cout << "  show           : 顯示最後一次執行的電路圖與狀態快照\n";
+        std::cout << "  exit / quit    : 離開控制台\n\n";
+    }
+
+    void CmdManual() {
+        std::cout << "\n================ 量子電路操作手冊 ================\n";
+        std::cout << "[基本架構與語法]\n";
+        std::cout << "本模擬器用於模擬量子位元 (Qubits) 的演化[cite: 1]。\n";
+        std::cout << "指令語法必須用雙引號 \"\" 包起來，格式如下：\n";
+        std::cout << "  \"<總量子位元數>, {量子閘, 目標1, 目標2...}, {量子閘...}\"\n\n";
+
+        std::cout << "[所有可用的量子電路組件 (GateTypes)]\n";
+        std::cout << "1. 基本單量子位元閘 (需 1 個目標位元)[cite: 1]:\n";
+        std::cout << "   - H    : Hadamard 閘 (創造均勻疊加態)\n";
+        std::cout << "   - X    : Pauli-X 閘 (量子 NOT 閘，0變1，1變0)\n";
+        std::cout << "   - Y    : Pauli-Y 閘\n";
+        std::cout << "   - Z    : Pauli-Z 閘 (相位反轉)\n";
+        std::cout << "   - S    : S 閘 (繞 Z 軸旋轉 90 度)\n";
+        std::cout << "   - Sdg  : S-dagger 閘 (S 閘的共軛轉置)\n";
+        std::cout << "   - T    : T 閘 (繞 Z 軸旋轉 45 度)\n";
+        std::cout << "   - Tdg  : T-dagger 閘 (T 閘的共軛轉置)\n\n";
+
+        std::cout << "2. 參數化單量子位元閘 (需 1 個目標位元 + 1 個角度參數)[cite: 1]:\n";
+        std::cout << "   (角度單位為度數 degree)\n";
+        std::cout << "   - Rx   : 繞 X 軸旋轉 (例如: {Rx,0,90})\n";
+        std::cout << "   - Ry   : 繞 Y 軸旋轉\n";
+        std::cout << "   - Rz   : 繞 Z 軸旋轉\n\n";
+
+        std::cout << "3. 雙量子位元閘 (需 2 個目標位元)[cite: 1]:\n";
+        std::cout << "   - CNOT     : 控制反轉閘 (Control-NOT，參數順序: 控制位元, 目標位元)\n";
+        std::cout << "   - CZ       : 控制相位閘 (Control-Z)\n";
+        std::cout << "   - SWAP     : 交換閘 (交換兩個位元狀態)\n";
+        std::cout << "   - iSWAP    : 虛數交換閘\n";
+        std::cout << "   - SqrtSWAP : 平方根交換閘\n\n";
+
+        std::cout << "4. 三量子位元閘 (需 3 個目標位元)[cite: 1]:\n";
+        std::cout << "   - CCNOT    : Toffoli 閘 (雙控制 NOT，順序: 控1, 控2, 目標)\n";
+        std::cout << "   - CSWAP    : Fredkin 閘 (控制交換閘)\n";
+        std::cout << "   - Deutsch  : Deutsch 閘 (需額外 1 個角度參數，例如: {Deutsch,0,1,2,45})\n\n";
+
+        std::cout << "5. 測量與控制流 (Measurement & Flow)[cite: 1]:\n";
+        std::cout << "   - M / Measure: 測量單一量子位元並坍縮 (例如: {M,0})\n";
+        std::cout << "   - Parity     : 測量多個量子位元的宇稱 (例如: {Parity,0,1,2})\n";
+        std::cout << "   - Label      : 設定跳轉標籤 (例如: {Label,loop_start})\n";
+        std::cout << "   - Goto       : 跳轉至特定標籤 (例如: {Goto,loop_start})\n";
+        std::cout << "   - If         : 條件分支，若測量等於預期則執行內部指令。\n";
+        std::cout << "                  格式: {If, 目標位元, 預期值, {指令...}}\n";
+        std::cout << "                  (例如: {If,0,1,{X,1}}，若 Q0=1 則對 Q1 做 X 閘)\n\n";
+
+        std::cout << "[經典示範 (Examples)]\n";
+        std::cout << "▶ 範例 1：建立兩量子位元的貝爾態 (Bell State，最大糾纏態)\n";
+        std::cout << "  輸入: run \"2, {H,0}, {CNOT,0,1}\"\n";
+        std::cout << "  說明: 準備 2 個位元，先對 Q0 用 H 閘變成 0 與 1 的疊加態，再用 CNOT 閘將\n";
+        std::cout << "        Q0 與 Q1 綁定。最終狀態為 |00> 與 |11> 各 50% 機率。\n\n";
+
+        std::cout << "▶ 範例 2：量子遙傳 (Quantum Teleportation) 簡化結構與動態控制\n";
+        std::cout << "  輸入: run \"3, {H,1}, {CNOT,1,2}, {CNOT,0,1}, {H,0}, {M,0}, {M,1}, {If,1,1,{X,2}}, {If,0,1,{Z,2}}\"\n";
+        std::cout << "  說明: 此電路將未知的量子態從 Q0 傳遞到 Q2。過程包含建立糾纏(Q1,Q2)、\n";
+        std::cout << "        貝爾測量(Q0,Q1)，以及透過 'If' 條件控制對 Q2 進行 X 或 Z 閘修正。\n";
+        std::cout << "==================================================\n\n";
+    }
+
+    void CmdConfig(const std::string& args) {
+        if (args.empty()) {
+            std::cout << "\n[當前設定]\n";
+            std::cout << "  Error Rate (error_rate)    : " << config.error_rate << "\n";
+            std::cout << "  Apply Errors (apply_errors): " << (config.apply_errors ? "true" : "false") << "\n";
+            std::cout << "  Track Errors (track_errors): " << (config.track_errors ? "true" : "false") << "\n\n";
+            return;
+        }
+
+        std::stringstream ss(args);
+        std::string key;
+        ss >> key;
+
+        if (key == "error_rate") {
+            double val;
+            if (ss >> val) { config.error_rate = val; std::cout << "已設定 error_rate = " << val << "\n"; }
+        }
+        else if (key == "apply_errors") {
+            std::string val;
+            if (ss >> val) { config.apply_errors = (val == "true" || val == "1"); std::cout << "已設定 apply_errors = " << config.apply_errors << "\n"; }
+        }
+        else if (key == "track_errors") {
+            std::string val;
+            if (ss >> val) { config.track_errors = (val == "true" || val == "1"); std::cout << "已設定 track_errors = " << config.track_errors << "\n"; }
+        }
+        else {
+            std::cout << "未知的設定參數: " << key << "\n";
+        }
+    }
+
+    void CmdRun(const std::string& args) {
+        std::string expr = Trim(args);
+
+        if (expr.empty()) {
+            std::cout << "錯誤：請提供電路表達式。\n";
+            std::cout << "提示：表達式必須使用雙引號 \"\" 包裝。\n";
+            std::cout << "例如: run \"2, {H,0}, {CNOT,0,1}\"\n";
+            return;
+        }
+
+        // 檢查開頭和結尾是否都是雙引號
+        if (expr.front() == '"' && expr.back() == '"' && expr.length() >= 2) {
+            // 擷取雙引號內部的字串
+            std::string parsed_expr = expr.substr(1, expr.length() - 2);
+
+            try {
+                last_circuit = CircuitExpression::Parse(parsed_expr);
+                std::cout << "解析成功！開始執行量子模擬...\n";
+                last_result = last_circuit.ExecuteWithCapture(sim, config);
+                has_result = true;
+                std::cout << "模擬完成。輸入 'show' 來查看結果。\n";
+            }
+            catch (const std::exception& e) {
+                std::cout << "解析或執行時發生錯誤: " << e.what() << "\n";
+            }
+        }
+        else {
+            // 如果沒有用雙引號包好，給予錯誤提示
+            std::cout << "錯誤：語法不正確！電路表達式必須使用雙引號 \"\" 完整包裝。\n";
+            std::cout << "正確範例: run \"3, {H,0}, {CNOT,0,1}\"\n";
+            std::cout << "您的輸入: run " << args << "\n";
+        }
+    }
+
+    void CmdShow() {
+        if (!has_result) {
+            std::cout << "目前沒有可顯示的執行結果。請先使用 'run' 指令執行電路。\n";
+            return;
+        }
+        CircuitPrinter::Print(last_circuit, last_result, std::cout);
+    }
+
+public:
+    Console() {
+        // 初始化預設 config
+        config.track_errors = true;
+        config.apply_errors = false;
+        config.error_rate = 0.03;
+    }
+
+    void Start() {
+        PrintIntro();
+        std::string input;
+
+        while (true) {
+            std::cout << "QConsole> ";
+            if (!std::getline(std::cin, input)) break;
+
+            input = Trim(input);
+            if (input.empty()) continue;
+
+            size_t space_pos = input.find(' ');
+            std::string cmd = input.substr(0, space_pos);
+            std::string args = (space_pos != std::string::npos) ? Trim(input.substr(space_pos + 1)) : "";
+
+            if (cmd == "exit" || cmd == "quit") {
+                std::cout << "正在結束控制台...\n";
+                break;
+            }
+            else if (cmd == "help") {
+                CmdHelp();
+            }
+            else if (cmd == "manual") {
+                CmdManual();
+            }
+            else if (cmd == "config") {
+                CmdConfig(args);
+            }
+            else if (cmd == "run") {
+                CmdRun(args);
+            }
+            else if (cmd == "show") {
+                CmdShow();
+            }
+            else {
+                std::cout << "未知指令: '" << cmd << "'。輸入 'help' 以查看可用指令。\n";
+            }
+        }
+    }
+};
+
 int main() {
-    Qubit_Simulation sim = Qubit_Simulation();
-
-    // 範例：無誤差
-    auto circuit = CircuitExpression::Parse("3, {H,0}, {CNOT,0,1}, {CNOT,1,2} ,{CNOT,2,1}");
-    //CircuitResult result = circuit.ExecuteWithCapture(sim);
-    //CircuitPrinter::Print(circuit, result);
-
-    // 範例：有誤差追蹤
-    
-    Qubit_Simulation sim2 = Qubit_Simulation();
-    SimulationConfig cfg;
-    cfg.track_errors = true;
-    cfg.error_rate = 0.05;
-    cfg.apply_errors = true;
-    CircuitResult result2 = circuit.ExecuteWithCapture(sim2, cfg);
-    CircuitPrinter::Print(circuit, result2);
-   /* */
+    // 啟動互動式控制台
+    Console console;
+    console.Start();
 
     return 0;
 }
