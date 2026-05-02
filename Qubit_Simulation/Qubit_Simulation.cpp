@@ -45,7 +45,7 @@ struct StepSnapshot {
     std::map<int, int>                     measurements = {};
     ErrorRecord  error_record;
     int          cumulative_errors = 0;
-    std::vector<double> qubit_error_accum = {}; 
+    std::vector<double> qubit_error_accum = {};
 };
 
 struct SimulationConfig {
@@ -58,7 +58,7 @@ struct SimulationConfig {
 struct CircuitResult {
     int num_qubits = 0;
     std::vector<StepSnapshot> snapshots = {};
-    SimulationConfig config; 
+    SimulationConfig config;
 };
 
 enum class GateType {
@@ -73,7 +73,9 @@ enum class GateType {
     // 測量
     Measure, Parity,
     // 控制流
-    Conditional, Label, Goto
+    Conditional, Label, Goto,
+    // 重置
+    Reset
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -85,6 +87,7 @@ struct CircuitInstruction {
     double                          param = 0.0;
     int                             expected_val = 1;  // 預設為 1
     bool                            condition_is_measure = false; // 紀錄條件是否包含測量動作
+    bool                            condition_is_parity = false; // 紀錄條件是否為宇稱測量
     std::string                     label = "";
     std::vector<CircuitInstruction> sub_insts = {};
 };
@@ -598,6 +601,19 @@ public:
         Entangled_Qubit_Set.clear();
         Qubit_Set_Observation.clear();
         Entangled_Qubit_Set_Pointer.clear();
+    }
+
+    // 將所有 Qubit 重置回 |0> 初始狀態，保留 Qubit 數量不變
+    void ReinitializeAllQubits() {
+        int n = Qubit_Amount;
+        Entangled_Qubit_Set.clear();
+        Qubit_Set_Observation.clear();
+        Entangled_Qubit_Set_Pointer.clear();
+        for (int count = 0; count < n; count++) {
+            Entangled_Qubit_Set_Pointer[count] = { {count}, {FixedComplex(Fixed_Point), FixedComplex()} };
+            Qubit_Set_Observation.push_back({ 0, -1 });
+            Entangled_Qubit_Set[count] = &Entangled_Qubit_Set_Pointer[count];
+        }
     }
 
     void OuputEntangledQubitSet(const int situation) {
@@ -1168,6 +1184,7 @@ public:
         case GateType::Conditional: return "If";
         case GateType::Label:       return "Label";
         case GateType::Goto:        return "Goto";
+        case GateType::Reset:       return "Reset";
         default:                    return "?";
         }
     }
@@ -1178,10 +1195,18 @@ public:
         if (!inst.label.empty())   ss << "," << inst.label;
 
         if (inst.type == GateType::Conditional) {
-            ss << ",{" << (inst.condition_is_measure ? "M," : "")
-                << (inst.qubits.empty() ? -1 : inst.qubits[0]);
-            if (inst.expected_val != 1) ss << "," << inst.expected_val;
-            ss << "}";
+            if (inst.condition_is_parity) {
+                ss << ",{Parity";
+                for (int q : inst.qubits) ss << "," << q;
+                if (inst.expected_val != 1) ss << "," << inst.expected_val;
+                ss << "}";
+            }
+            else {
+                ss << ",{" << (inst.condition_is_measure ? "M," : "")
+                    << (inst.qubits.empty() ? -1 : inst.qubits[0]);
+                if (inst.expected_val != 1) ss << "," << inst.expected_val;
+                ss << "}";
+            }
             for (const auto& s : inst.sub_insts) ss << " " << InstructionToString(s);
         }
         else {
@@ -1213,6 +1238,7 @@ private:
             {"Parity",GateType::Parity},
             {"If",GateType::Conditional},
             {"Label",GateType::Label},{"Goto",GateType::Goto},
+            {"Reset",GateType::Reset},{"RST",GateType::Reset},
         };
         auto it = T.find(name);
         return (it != T.end()) ? it->second : GateType::Identity;
@@ -1232,6 +1258,7 @@ private:
         case GateType::CCNOT: case GateType::CSWAP: return { 3,0 };
         case GateType::Deutsch: return { 3,1 };
         case GateType::Parity:  return { -1,0 };
+        case GateType::Reset:   return { 0,0 };
         default: return { 0,0 };
         }
     }
@@ -1296,6 +1323,24 @@ private:
                     if (cond_toks.size() > 1) inst.qubits.push_back(std::stoi(trim_str(cond_toks[1])));
                     if (cond_toks.size() > 2) inst.expected_val = std::stoi(trim_str(cond_toks[2]));
                     else inst.expected_val = 1; // 預設值
+                }
+                else if (t0 == "Parity") {
+                    // 解析宇稱條件：所有數字為 qubit ID，
+                    // 若末尾數字為 0 或 1 且移除後至少仍有 2 個 qubit，則視為 expected_val
+                    inst.condition_is_parity = true;
+                    inst.expected_val = 1; // 預設奇宇稱
+                    std::vector<std::string> parity_toks(cond_toks.begin() + 1, cond_toks.end());
+                    if (parity_toks.size() >= 3) { // 至少 3 個 token 才考慮末尾為 expected_val
+                        int last = std::stoi(trim_str(parity_toks.back()));
+                        if (last == 0 || last == 1) {
+                            inst.expected_val = last;
+                            parity_toks.pop_back();
+                        }
+                    }
+                    for (const auto& t : parity_toks)
+                        inst.qubits.push_back(std::stoi(trim_str(t)));
+                    if (inst.qubits.size() < 2)
+                        throw std::runtime_error("IF Parity 條件錯誤：至少需要 2 個 Qubit！");
                 }
                 else {
                     inst.condition_is_measure = false;
@@ -1389,6 +1434,28 @@ private:
             return (it != lm.end()) ? it->second : -1;
         }
         if (inst.type == GateType::Conditional) {
+            if (inst.qubits.empty())
+                throw std::runtime_error("IF 條件錯誤：未指定目標 Qubit！");
+
+            // ── 宇稱條件：當場執行 MeasureParity，再判斷結果 ──
+            if (inst.condition_is_parity) {
+                int parity_result = sim.MeasureParity(inst.qubits);
+                if (parity_result == -1)
+                    throw std::runtime_error("IF Parity 條件錯誤：目標 Qubit 不可操作或已坍縮！");
+                // 宇稱測量後，所有參與 qubit 的誤差歸零
+                for (int pq : inst.qubits) q_errs[pq] = 0.0;
+                if (parity_result == inst.expected_val) {
+                    for (const auto& sub : inst.sub_insts) {
+                        ErrorRecord se;
+                        int jump = ExecuteOne(sub, sim, lm, cfg, rng, se, q_errs);
+                        if (se.occurred && !err.occurred) err = se;
+                        err.gate_error_prob += se.gate_error_prob;
+                        if (jump >= 0) return jump;
+                    }
+                }
+                return -1;
+            }
+
             int q = inst.qubits[0];
 
             if (inst.condition_is_measure) {
@@ -1458,6 +1525,11 @@ private:
             sim.ObserverQubit(inst.qubits[0]); break;
         case GateType::Parity:
             sim.MeasureParity(inst.qubits);    break;
+        case GateType::Reset:
+            // 將所有 Qubit 重置回 |0> 並清除所有誤差累積
+            sim.ReinitializeAllQubits();
+            std::fill(q_errs.begin(), q_errs.end(), 0.0);
+            return -1;
         default: break;
         }
 
@@ -1719,6 +1791,7 @@ private:
         case GateType::Label:  return "[LBL]";
         case GateType::Goto:   return "[GO]";
         case GateType::Conditional: return "[If]";
+        case GateType::Reset:  return "[RST]";
         case GateType::SWAP:   return "[x]";
         case GateType::iSWAP:  return "[ix]";
         case GateType::SqrtSWAP: return "[Vx]";
@@ -1946,14 +2019,25 @@ private:
         std::cout << "   - M / Measure: 測量單一量子位元並坍縮。測量後該位元退出糾纏，累積的物理誤差歸零。\n";
         std::cout << "   - Parity     : 測量多個量子位元的宇稱。參與的位元也會將誤差歸零。\n";
         std::cout << "   - Label, Goto: 跳轉標籤與執行跳轉。\n";
+        std::cout << "   - Reset / RST: 將「全部」量子位元重置回 |0> 初始狀態，清除所有糾纏與測量紀錄，並將誤差累積歸零。\n";
+        std::cout << "                  格式: {Reset}  (無需任何參數)\n";
+        std::cout << "                  常見用途: 在 IF 分支內確保 Qubit 回到已知狀態後再繼續操作。\n";
+        std::cout << "                  範例: {If, {M, 0}, {Reset}, {H, 1}}  (若 Q0=1 則重置全部再做 H 閘)\n";
         std::cout << "   - If         : 條件分支 (條件可為動態測量，或檢查已坍縮的狀態)\n";
-        std::cout << "                  格式: {If, {條件}, {指令...}}\n";
+        std::cout << "                  格式: {If, {條件}, {指令1}, {指令2}, ...}\n";
+        std::cout << "                  子指令可以是任意普通指令（H/X/CNOT/Reset 等），也可以再嵌套 If。\n";
         std::cout << "                  [條件寫法]\n";
-        std::cout << "                  1. {M, q, val} : 對 q 測量，預期值為 val (若省略 val 則預設為 1)\n";
-        std::cout << "                  2. {q, val}    : 檢查已坍縮的 q，預期值為 val (若省略 val 則預設為 1)\n";
-        std::cout << "                  範例1: {If, {M, 0}, {X, 1}}       (當下測量 Q0，若為 1 則對 Q1 做 X 閘)\n";
-        std::cout << "                  範例2: {If, {M, 0, 0}, {X, 1}}    (當下測量 Q0，若為 0 則對 Q1 做 X 閘)\n";
-        std::cout << "                  範例3: {M, 0}, {If, {0}, {X, 1}}  (先測量 Q0，後續純判斷 Q0 若為 1 則執行)\n\n";
+        std::cout << "                  1. {M, q, val}          : 對 q 測量，預期值為 val (若省略 val 則預設為 1)\n";
+        std::cout << "                  2. {q, val}             : 檢查已坍縮的 q，預期值為 val (若省略 val 則預設為 1)\n";
+        std::cout << "                  3. {Parity, q0, q1, ...}: 當場測量多個 qubit 的宇稱，預期值預設為 1 (奇宇稱)\n";
+        std::cout << "                     若末尾多一個 0 且 qubit 數 >= 2，則視為 expected_val=0 (偶宇稱)\n";
+        std::cout << "                  範例1: {If, {M, 0}, {X, 1}}                       (測量 Q0，若=1 則對 Q1 做 X)\n";
+        std::cout << "                  範例2: {If, {M, 0, 0}, {X, 1}}                    (測量 Q0，若=0 則對 Q1 做 X)\n";
+        std::cout << "                  範例3: {M, 0}, {If, {0}, {X, 1}}                  (先測量 Q0，後判斷)\n";
+        std::cout << "                  範例4: {If, {M,0}, {If, {M,1}, {X,2}}}            (嵌套 If)\n";
+        std::cout << "                  範例5: {If, {M,0}, {Reset}, {H,1}}                (Q0=1 則重置後做 H)\n";
+        std::cout << "                  範例6: {If, {Parity,0,1}, {X,2}}                  (Q0,Q1 宇稱為奇(1)則對 Q2 做 X)\n";
+        std::cout << "                  範例7: {If, {Parity,0,1,2,0}, {Z,3}}              (Q0,Q1,Q2 宇稱為偶(0)則對 Q3 做 Z)\n\n";
 
         std::cout << "[物理誤差模型與糾纏動態 (Error Diffusion)]\n";
         std::cout << "  本模擬器採用真實的「誤差局部擴散與脫離機制」：\n";
