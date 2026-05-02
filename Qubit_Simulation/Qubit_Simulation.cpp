@@ -75,7 +75,9 @@ enum class GateType {
     // 控制流
     Conditional, Label, Goto,
     // 重置
-    Reset
+    Reset,
+    // 初始化特定 Qubit
+    InitQubit
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -1055,6 +1057,87 @@ public:
             ExtractSeparatedQubit(qubits_in_set[count]);
     }
 
+    // 將指定的 qubit 強制初始化為 |0> (target_state=0) 或 |1> (target_state=1)
+    // 若該 qubit 處於糾纏狀態，會先從糾纏群組中投影分離，再設定目標狀態
+    void InitializeQubit(int qubit, int target_state) {
+        if (qubit < 0 || qubit >= Qubit_Amount) return;
+        target_state = (target_state != 0) ? 1 : 0;
+
+        // 若 qubit 目前在一個糾纏群組中，先將其投影分離
+        if (Entangled_Qubit_Set.find(qubit) != Entangled_Qubit_Set.end() &&
+            Entangled_Qubit_Set[qubit] != nullptr) {
+
+            auto* group_ptr = Entangled_Qubit_Set[qubit];
+
+            if (group_ptr->first.size() > 1) {
+                int q_pos = GetSituation(qubit);
+                std::vector<FixedComplex>& state = group_ptr->second;
+                size_t half = state.size() >> 1;
+
+                // 計算投影到 target_state 後的正規化係數
+                int128_t norm_sq = 0;
+                for (size_t c = 0; c < half; c++) {
+                    FixedComplex amp = state[BitAdd(c, q_pos, (unsigned long long)target_state)];
+                    int128_t av = QMath::AbsoluteValue(amp);
+                    norm_sq += (av * av) >> Fixed_shift;
+                }
+
+                std::vector<FixedComplex> new_state(half, FixedComplex());
+
+                if (norm_sq > 0) {
+                    // target_state 有非零機率，正常投影
+                    long long norm_factor = QMath::NewtonSqrt((int128_t)norm_sq << Fixed_shift);
+                    for (size_t c = 0; c < half; c++) {
+                        FixedComplex amp = state[BitAdd(c, q_pos, (unsigned long long)target_state)];
+                        new_state[c] = amp / norm_factor;
+                    }
+                }
+                else {
+                    // target_state 在目前狀態下機率為零，改用另一個基底投影以保全剩餘 qubit 正規化
+                    int other = 1 - target_state;
+                    int128_t other_norm_sq = 0;
+                    for (size_t c = 0; c < half; c++) {
+                        FixedComplex amp = state[BitAdd(c, q_pos, (unsigned long long)other)];
+                        int128_t av = QMath::AbsoluteValue(amp);
+                        other_norm_sq += (av * av) >> Fixed_shift;
+                    }
+                    if (other_norm_sq > 0) {
+                        long long norm_factor = QMath::NewtonSqrt((int128_t)other_norm_sq << Fixed_shift);
+                        for (size_t c = 0; c < half; c++) {
+                            FixedComplex amp = state[BitAdd(c, q_pos, (unsigned long long)other)];
+                            new_state[c] = amp / norm_factor;
+                        }
+                    }
+                }
+
+                // 更新群組的狀態向量（移除本 qubit 的維度）
+                group_ptr->second = new_state;
+
+                // 從群組 qubit 名單中移除本 qubit
+                auto& qubit_names = group_ptr->first;
+                qubit_names.erase(
+                    std::remove(qubit_names.begin(), qubit_names.end(), qubit),
+                    qubit_names.end()
+                );
+            }
+
+            // 切斷本 qubit 與原群組的連結
+            Entangled_Qubit_Set[qubit] = nullptr;
+        }
+
+        // 清除已觀測標記
+        Qubit_Set_Observation[qubit] = { 0, -1 };
+
+        // 建立新的獨立狀態：|0> = {1,0}，|1> = {0,1}
+        if (target_state == 0) {
+            Entangled_Qubit_Set_Pointer[qubit] = { {qubit}, {FixedComplex(Fixed_Point), FixedComplex()} };
+        }
+        else {
+            Entangled_Qubit_Set_Pointer[qubit] = { {qubit}, {FixedComplex(), FixedComplex(Fixed_Point)} };
+        }
+        Entangled_Qubit_Set[qubit] = &Entangled_Qubit_Set_Pointer[qubit];
+    }
+
     void HadamardGate(int q) { ApplySingleQubitGate(q, GateType::H); }
     void XGate(int q) { ApplySingleQubitGate(q, GateType::X); }
     void YGate(int q) { ApplySingleQubitGate(q, GateType::Y); }
@@ -1185,6 +1268,7 @@ public:
         case GateType::Label:       return "Label";
         case GateType::Goto:        return "Goto";
         case GateType::Reset:       return "Reset";
+        case GateType::InitQubit:   return "Init";
         default:                    return "?";
         }
     }
@@ -1239,6 +1323,7 @@ private:
             {"If",GateType::Conditional},
             {"Label",GateType::Label},{"Goto",GateType::Goto},
             {"Reset",GateType::Reset},{"RST",GateType::Reset},
+            {"Init",GateType::InitQubit},{"INIT",GateType::InitQubit},
         };
         auto it = T.find(name);
         return (it != T.end()) ? it->second : GateType::Identity;
@@ -1259,6 +1344,7 @@ private:
         case GateType::Deutsch: return { 3,1 };
         case GateType::Parity:  return { -1,0 };
         case GateType::Reset:   return { 0,0 };
+        case GateType::InitQubit: return { 1,1 };  // 1 qubit, 1 param (目標狀態 0 或 1)
         default: return { 0,0 };
         }
     }
@@ -1530,6 +1616,13 @@ private:
             sim.ReinitializeAllQubits();
             std::fill(q_errs.begin(), q_errs.end(), 0.0);
             return -1;
+        case GateType::InitQubit:
+            // 將指定 Qubit 初始化為 |0> 或 |1>，並清除該 Qubit 的誤差
+            if (!inst.qubits.empty()) {
+                sim.InitializeQubit(inst.qubits[0], static_cast<int>(inst.param));
+                q_errs[inst.qubits[0]] = 0.0;
+            }
+            break;
         default: break;
         }
 
@@ -1675,10 +1768,6 @@ private:
         out << " Quantum Circuit Simulation\n";
         out << " Qubits : " << circuit.num_qubits
             << "   Steps : " << circuit.instructions.size() << "\n";
-        if (!result.snapshots.empty()) {
-            out << " Error  : rate=" << FmtPct(result.config.error_rate)
-                << "  tracking=" << (result.config.track_errors ? "on" : "off") << "\n";
-        }
         out << Row('=', W) << "\n";
     }
 
@@ -1792,6 +1881,10 @@ private:
         case GateType::Goto:   return "[GO]";
         case GateType::Conditional: return "[If]";
         case GateType::Reset:  return "[RST]";
+        case GateType::InitQubit: {
+            int st = static_cast<int>(inst.param);
+            return (st == 0) ? "[I|0>]" : "[I|1>]";
+        }
         case GateType::SWAP:   return "[x]";
         case GateType::iSWAP:  return "[ix]";
         case GateType::SqrtSWAP: return "[Vx]";
@@ -1985,7 +2078,7 @@ private:
         std::cout << "\n[可用指令列表]\n";
         std::cout << "  help           : 顯示此指令列表\n";
         std::cout << "  manual         : 顯示量子電路詳細操作手冊、所有支援的閘與範例\n";
-        std::cout << "  config         : 設定參數 (如: config error_rate 0.05)\n";
+        std::cout << "  config         : 查看目前設定\n";
         std::cout << "  run \"<expr>\"   : 執行電路，表達式必須用雙引號包裝\n";
         std::cout << "                   (例如: run \"3, {H,0}, {CNOT,0,1}\")\n";
         std::cout << "  show           : 顯示最後一次執行的電路圖與狀態快照\n";
@@ -2016,13 +2109,19 @@ private:
         std::cout << "   - Deutsch        : 需額外 1 個角度 (例如: {Deutsch,0,1,2,45})\n\n";
 
         std::cout << "4. 測量與經典控制流 (Measurement & Flow):\n";
-        std::cout << "   - M / Measure: 測量單一量子位元並坍縮。測量後該位元退出糾纏，累積的物理誤差歸零。\n";
-        std::cout << "   - Parity     : 測量多個量子位元的宇稱。參與的位元也會將誤差歸零。\n";
+        std::cout << "   - M / Measure: 測量單一量子位元並坍縮。測量後該位元退出糾纏。\n";
+        std::cout << "   - Parity     : 測量多個量子位元的宇稱。\n";
         std::cout << "   - Label, Goto: 跳轉標籤與執行跳轉。\n";
-        std::cout << "   - Reset / RST: 將「全部」量子位元重置回 |0> 初始狀態，清除所有糾纏與測量紀錄，並將誤差累積歸零。\n";
+        std::cout << "   - Reset / RST: 將「全部」量子位元重置回 |0> 初始狀態，清除所有糾纏與測量紀錄。\n";
         std::cout << "                  格式: {Reset}  (無需任何參數)\n";
         std::cout << "                  常見用途: 在 IF 分支內確保 Qubit 回到已知狀態後再繼續操作。\n";
         std::cout << "                  範例: {If, {M, 0}, {Reset}, {H, 1}}  (若 Q0=1 則重置全部再做 H 閘)\n";
+        std::cout << "   - Init / INIT : 將「指定」量子位元初始化為 |0> 或 |1>，清除其糾纏與測量紀錄。\n";
+        std::cout << "                  格式: {Init, q, state}  (state = 0 表示 |0>，state = 1 表示 |1>)\n";
+        std::cout << "                  若該 qubit 處於糾纏狀態，會先對群組做投影分離，其餘 qubit 狀態自動正規化。\n";
+        std::cout << "                  範例1: {Init, 0, 0}      (將 Q0 初始化為 |0>)\n";
+        std::cout << "                  範例2: {Init, 1, 1}      (將 Q1 初始化為 |1>)\n";
+        std::cout << "                  範例3: {H,0},{CNOT,0,1},{Init,0,0}   (Bell 態後強制將 Q0 重設為 |0>，Q1 會坍縮)\n";
         std::cout << "   - If         : 條件分支 (條件可為動態測量，或檢查已坍縮的狀態)\n";
         std::cout << "                  格式: {If, {條件}, {指令1}, {指令2}, ...}\n";
         std::cout << "                  子指令可以是任意普通指令（H/X/CNOT/Reset 等），也可以再嵌套 If。\n";
@@ -2039,13 +2138,6 @@ private:
         std::cout << "                  範例6: {If, {Parity,0,1}, {X,2}}                  (Q0,Q1 宇稱為奇(1)則對 Q2 做 X)\n";
         std::cout << "                  範例7: {If, {Parity,0,1,2,0}, {Z,3}}              (Q0,Q1,Q2 宇稱為偶(0)則對 Q3 做 Z)\n\n";
 
-        std::cout << "[物理誤差模型與糾纏動態 (Error Diffusion)]\n";
-        std::cout << "  本模擬器採用真實的「誤差局部擴散與脫離機制」：\n";
-        std::cout << "  - 單量子閘不引發新誤差；多量子閘會依據 error_rate 引發誤差。\n";
-        std::cout << "  - 誤差擴散：當發生糾纏時，誤差會擴散到該糾纏群組的「所有」位元。\n";
-        std::cout << "              若 Q0, Q1 先糾纏，隨後 Q1 與 Q2 糾纏，則 Q1, Q2 的新誤差也會回傳擴散給 Q0。\n";
-        std::cout << "  - 誤差歸零：當一個量子位元因為特定運算或測量而「脫離糾纏」(成為獨立狀態)，其物理誤差立即歸零。\n\n";
-
         std::cout << "[經典示範 (Examples)]\n";
         std::cout << "▶ 量子遙傳 (Quantum Teleportation)\n";
         std::cout << "  輸入: run \"3, {H,1}, {CNOT,1,2}, {CNOT,0,1}, {H,0}, {M,0}, {M,1}, {If,1,1,{X,2}}, {If,0,1,{Z,2}}\"\n";
@@ -2055,9 +2147,7 @@ private:
     void CmdConfig(const std::string& args) {
         if (args.empty()) {
             std::cout << "\n[當前設定]\n";
-            std::cout << "  Error Rate (error_rate)    : " << config.error_rate << "\n";
-            std::cout << "  Apply Errors (apply_errors): " << (config.apply_errors ? "true" : "false") << "\n";
-            std::cout << "  Track Errors (track_errors): " << (config.track_errors ? "true" : "false") << "\n\n";
+            std::cout << "  (目前無可調整的設定項目)\n\n";
             return;
         }
 
@@ -2065,17 +2155,8 @@ private:
         std::string key;
         ss >> key;
 
-        if (key == "error_rate") {
-            double val;
-            if (ss >> val) { config.error_rate = val; std::cout << "已設定 error_rate = " << val << "\n"; }
-        }
-        else if (key == "apply_errors") {
-            std::string val;
-            if (ss >> val) { config.apply_errors = (val == "true" || val == "1"); std::cout << "已設定 apply_errors = " << config.apply_errors << "\n"; }
-        }
-        else if (key == "track_errors") {
-            std::string val;
-            if (ss >> val) { config.track_errors = (val == "true" || val == "1"); std::cout << "已設定 track_errors = " << config.track_errors << "\n"; }
+        if (key == "error_rate" || key == "apply_errors" || key == "track_errors") {
+            std::cout << "提示：誤差相關功能目前已停用，此設定不會產生任何效果。\n";
         }
         else {
             std::cout << "未知的設定參數: " << key << "\n";
@@ -2126,8 +2207,8 @@ private:
 
 public:
     Console() {
-        // 初始化預設 config
-        config.track_errors = true;
+        // 初始化預設 config（誤差追蹤功能已停用）
+        config.track_errors = false;
         config.apply_errors = false;
         config.error_rate = 0.03;
     }
