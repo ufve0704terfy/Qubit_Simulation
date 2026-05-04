@@ -18,6 +18,7 @@ static constexpr const double Root_half = 0.70710678118;
 static constexpr const double Pi = 3.141592658979;
 static constexpr const unsigned long long int Fixed_Pi = 14488038916154245120ULL;
 static constexpr const long long int Tolerent_Round = 1LL << 10;
+static constexpr const long long int Fixed_Epsilon = 500000LL;
 
 // ══════════════════════════════════════════════════════════════
 // 快照與誤差相關結構
@@ -325,6 +326,14 @@ public:
         return (D > 0 ? D : -D);
     }
 
+    static inline bool IsZero(const FixedComplex& C) {
+        return (AbsoluteValue(C.Real) < Fixed_Epsilon) && (AbsoluteValue(C.Imaginary) < Fixed_Epsilon);
+    }
+
+    static inline long long int AbsoluteValue(const long long int& D) {
+        return (D > 0 ? D : -D);
+    }
+
     static inline long long int AbsoluteValue(const FixedComplex& C) {
         int128_t Result = ((int128_t)C.Real * C.Real + (int128_t)C.Imaginary * C.Imaginary);
         return NewtonSqrt(Result);
@@ -375,6 +384,10 @@ private:
         if (Entangled_Qubit_Set.find(situation1) == Entangled_Qubit_Set.end() || Entangled_Qubit_Set.find(situation2) == Entangled_Qubit_Set.end())
             return;
 
+        if (Entangled_Qubit_Set[situation1]->second.empty() || Entangled_Qubit_Set[situation2]->second.empty()) {
+            return;
+        }
+
         std::vector<int> First_Qubit_Name_Set = Entangled_Qubit_Set[situation1]->first,
             Second_Qubit_Name_Set = Entangled_Qubit_Set[situation2]->first;
 
@@ -389,7 +402,7 @@ private:
 
         for (unsigned long long x = 0; x < First_Qubit_Set.size(); x++)
             for (unsigned long long y = 0; y < Second_Qubit_Set.size(); y++)
-                if ((First_Qubit_Set[x].Real != 0 || First_Qubit_Set[x].Imaginary != 0) && (Second_Qubit_Set[y].Real != 0 || Second_Qubit_Set[y].Imaginary != 0))
+                if (!QMath::IsZero(First_Qubit_Set[x]) && !QMath::IsZero(Second_Qubit_Set[y]))
                     Result[x * Second_Qubit_Set.size() + y] = First_Qubit_Set[x] * Second_Qubit_Set[y];
 
         Entangled_Qubit_Set[situation1]->second = Result;
@@ -470,118 +483,170 @@ private:
         return (Entangled_Qubit_Set.find(situation) == Entangled_Qubit_Set.end() || IsObservered(situation));
     }
 
-    bool IsSeparable(const int qubit) {
-        if (IsQubitUnoperable(qubit)) return false;
-        if (Entangled_Qubit_Set[qubit]->first.size() == 1) return true;
+    void SplitEntangledGroup(const int root_situation) {
+        if (Entangled_Qubit_Set.find(root_situation) == Entangled_Qubit_Set.end()) return;
+        auto* group_ptr = Entangled_Qubit_Set[root_situation];
+        if (!group_ptr) return;
 
-        int q_pos = GetSituation(qubit);
-        std::vector<FixedComplex>& state = Entangled_Qubit_Set[qubit]->second;
-        size_t half = state.size() >> 1;
+        std::vector<int> current_qubits = group_ptr->first;
+        int N = current_qubits.size();
+        if (N <= 1) return;
 
-        long long ref0_R = 0, ref0_I = 0;
-        long long ref1_R = 0, ref1_I = 0;
-        bool found_ref = false;
+        const std::vector<FixedComplex>& state = group_ptr->second;
 
-        for (size_t count = 0; count < half; count++) {
-            unsigned long long idx0 = BitAdd(count, q_pos, 0ULL);
-            unsigned long long idx1 = BitAdd(count, q_pos, 1ULL);
+        // 1. 找到 reference index (找出任何一個不為0的基礎態當作基準點)
+        size_t ref_idx = 0;
+        for (size_t idx = 0; idx < state.size(); idx++) {
+            if (!QMath::IsZero(state[idx])) {
+                ref_idx = idx;
+                break;
+            }
+        }
 
-            FixedComplex amp0 = state[idx0];
-            FixedComplex amp1 = state[idx1];
+        // 定義一個 Lambda 函式，利用 XOR 將基準態平移到 000...0，方便數學因式分解
+        auto Amp = [&](size_t x) -> FixedComplex {
+            return state[x ^ ref_idx];
+            };
 
-            bool amp0_zero = (amp0.Real == 0 && amp0.Imaginary == 0);
-            bool amp1_zero = (amp1.Real == 0 && amp1.Imaginary == 0);
+        FixedComplex c_0 = Amp(0);
 
-            if (!found_ref) {
-                if (!amp0_zero || !amp1_zero) {
-                    ref0_R = amp0.Real; ref0_I = amp0.Imaginary;
-                    ref1_R = amp1.Real; ref1_I = amp1.Imaginary;
-                    found_ref = true;
+        // 2. 初始化並查集 (DSU)，一開始假設所有 Qubit 都是獨立的
+        std::vector<int> parent(N);
+        for (int i = 0; i < N; i++) parent[i] = i;
+
+        auto find = [&](int i) {
+            int root = i;
+            while (root != parent[root]) root = parent[root];
+            int curr = i;
+            while (curr != root) {
+                int nxt = parent[curr];
+                parent[curr] = root;
+                curr = nxt;
+            }
+            return root;
+            };
+
+        auto merge = [&](int i, int j) {
+            int root_i = find(i);
+            int root_j = find(j);
+            if (root_i != root_j) {
+                parent[root_i] = root_j;
+            }
+            };
+
+        // 3. 測試所有的狀態分佈，檢查張量積獨立性
+        for (size_t x = 1; x < (1ULL << N); x++) {
+            // 找出狀態 x 觸發了哪些目前假定的獨立 Component
+            std::vector<int> comps;
+            for (int i = 0; i < N; i++) {
+                if ((x >> i) & 1) {
+                    int c = find(i);
+                    if (std::find(comps.begin(), comps.end(), c) == comps.end()) {
+                        comps.push_back(c);
+                    }
                 }
-                continue;
             }
 
-            int128_t lhs_R = (int128_t)amp0.Real * ref1_R + (int128_t)amp0.Imaginary * ref1_I;
-            int128_t lhs_I = (int128_t)amp0.Imaginary * ref1_R - (int128_t)amp0.Real * ref1_I;
+            // 如果該狀態跨越了兩個以上的 Component，檢查它們是否真的可以數學分解
+            if (comps.size() > 1) {
+                int comp_A = comps[0];
+                size_t x_A = 0;
+                for (int i = 0; i < N; i++) {
+                    if (((x >> i) & 1) && find(i) == comp_A) {
+                        x_A |= (1ULL << i);
+                    }
+                }
+                size_t x_B = x ^ x_A; // 剩下的部份
 
-            int128_t rhs_R = (int128_t)amp1.Real * ref0_R + (int128_t)amp1.Imaginary * ref0_I;
-            int128_t rhs_I = (int128_t)amp1.Imaginary * ref0_R - (int128_t)amp1.Real * ref0_I;
+                FixedComplex c_x = Amp(x);
+                FixedComplex c_A = Amp(x_A);
+                FixedComplex c_B = Amp(x_B);
 
-            if (QMath::NewtonSqrt((lhs_R - rhs_R) * (lhs_R - rhs_R) + (lhs_I - rhs_I) * (lhs_I - rhs_I)) > Tolerent_Round)
-                return false;
-        }
+                // 核心檢驗：如果獨立，必定滿足 c_x * c_0 == c_A * c_B
+                FixedComplex lhs = c_x * c_0;
+                FixedComplex rhs = c_A * c_B;
 
-        return true;
-    }
-
-    void ExtractSeparatedQubit(const int qubit) {
-        if (!IsSeparable(qubit)) return;
-        if (Entangled_Qubit_Set[qubit]->first.size() == 1) return;
-
-        int q_pos = GetSituation(qubit);
-        std::vector<FixedComplex>& state = Entangled_Qubit_Set[qubit]->second;
-        size_t half = state.size() >> 1;
-
-        int128_t P0 = 0, P1 = 0;
-        for (size_t count = 0; count < half; count++) {
-            FixedComplex amp0 = state[BitAdd(count, q_pos, 0ULL)];
-            FixedComplex amp1 = state[BitAdd(count, q_pos, 1ULL)];
-
-            int128_t abs0 = QMath::AbsoluteValue(amp0);
-            int128_t abs1 = QMath::AbsoluteValue(amp1);
-            P0 += (abs0 * abs0) >> Fixed_shift;
-            P1 += (abs1 * abs1) >> Fixed_shift;
-        }
-
-        long long abs_a = QMath::NewtonSqrt(P0 << Fixed_shift);
-        long long abs_b = QMath::NewtonSqrt(P1 << Fixed_shift);
-
-        FixedComplex qubit_amp0 = FixedComplex(abs_a);
-        FixedComplex qubit_amp1 = FixedComplex();
-
-        for (size_t count = 0; count < half; count++) {
-            FixedComplex amp0 = state[BitAdd(count, q_pos, 0ULL)];
-            FixedComplex amp1 = state[BitAdd(count, q_pos, 1ULL)];
-
-            bool amp0_zero = (amp0.Real == 0 && amp0.Imaginary == 0);
-
-            if (!amp0_zero) {
-                qubit_amp1 = (amp1 / amp0) * abs_a;
-                break;
-            }
-
-            if (amp0_zero && (amp1.Real != 0 || amp1.Imaginary != 0)) {
-                qubit_amp0 = FixedComplex(0LL);
-                qubit_amp1 = FixedComplex(abs_b);
-                break;
+                FixedComplex diff = lhs - rhs;
+                if (QMath::AbsoluteValue(diff) > Tolerent_Round) {
+                    // 發生糾纏！因式分解失敗，必須把這些 Component 黏合在一起
+                    for (size_t i = 1; i < comps.size(); i++) {
+                        merge(comps[0], comps[i]);
+                    }
+                }
             }
         }
 
-        std::vector<FixedComplex> new_state(half, FixedComplex());
-        bool use_a = (qubit_amp0.Real != 0 || qubit_amp0.Imaginary != 0);
-
-        for (size_t count = 0; count < half; count++) {
-            FixedComplex amp = use_a
-                ? state[BitAdd(count, q_pos, 0ULL)]
-                : state[BitAdd(count, q_pos, 1ULL)];
-
-            FixedComplex divisor = use_a ? qubit_amp0 : qubit_amp1;
-            new_state[count] = amp / divisor;
+        // 4. 計算最終到底切出了幾個獨立的群組
+        std::vector<int> comp_id(N, -1);
+        int num_comps = 0;
+        std::unordered_map<int, int> root_to_comp;
+        for (int i = 0; i < N; i++) {
+            int r = find(i);
+            if (root_to_comp.find(r) == root_to_comp.end()) {
+                root_to_comp[r] = num_comps++;
+            }
+            comp_id[i] = root_to_comp[r];
         }
 
-        std::vector<int>& qubit_names = Entangled_Qubit_Set[qubit]->first;
-        qubit_names.erase(
-            std::remove(qubit_names.begin(), qubit_names.end(), qubit),
-            qubit_names.end()
-        );
+        // 如果全部都在同一個連通塊，代表不可分離，直接結束
+        if (num_comps <= 1) return;
 
-        Entangled_Qubit_Set[qubit]->second = new_state;
-
-        Entangled_Qubit_Set_Pointer[qubit] = {
-            { qubit },
-            { qubit_amp0, qubit_amp1 }
+        // 5. 將每個獨立群組的振幅各自萃取出來
+        struct ComponentData {
+            std::vector<int> names;
+            std::vector<FixedComplex> state;
         };
-        Entangled_Qubit_Set[qubit] = &Entangled_Qubit_Set_Pointer[qubit];
+        std::vector<ComponentData> extracted(num_comps);
+
+        for (int k = 0; k < num_comps; k++) {
+            std::vector<int> old_bit_pos;
+            for (int count = 0; count < N; count++) {
+                int b = N - 1 - count;
+                if (comp_id[b] == k) {
+                    extracted[k].names.push_back(current_qubits[count]);
+                    old_bit_pos.push_back(b);
+                }
+            }
+
+            int M = extracted[k].names.size();
+            extracted[k].state.resize(1ULL << M, FixedComplex());
+
+            int128_t norm_sq = 0;
+            for (size_t local_idx = 0; local_idx < (1ULL << M); local_idx++) {
+                size_t full_idx = ref_idx;
+                for (int c = 0; c < M; c++) {
+                    int new_b = M - 1 - c;
+                    int old_b = old_bit_pos[c];
+                    // 將 local_idx 映射回完整的大矩陣索引中
+                    if ((local_idx & (1ULL << new_b)) != 0) {
+                        full_idx |= (1ULL << old_b);
+                    }
+                    else {
+                        full_idx &= ~(1ULL << old_b);
+                    }
+                }
+                FixedComplex amp = state[full_idx];
+                extracted[k].state[local_idx] = amp;
+
+                int128_t abs_val = QMath::AbsoluteValue(amp);
+                norm_sq += (abs_val * abs_val) >> Fixed_shift;
+            }
+
+            // 重新正規化 (Normalize)
+            long long norm_factor = QMath::NewtonSqrt(norm_sq << Fixed_shift);
+            for (auto& amp : extracted[k].state) {
+                if (norm_factor > 0) amp = amp / norm_factor;
+            }
+        }
+
+        // 6. 將分離好的群組正式寫回模擬器系統中
+        for (int k = 0; k < num_comps; k++) {
+            int root = extracted[k].names[0];
+            Entangled_Qubit_Set_Pointer[root] = { extracted[k].names, extracted[k].state };
+            for (int q : extracted[k].names) {
+                Entangled_Qubit_Set[q] = &Entangled_Qubit_Set_Pointer[root];
+            }
+        }
     }
 
 public:
@@ -635,10 +700,14 @@ public:
     }
 
     void CutQubitSet(const int situation, long long int Probability0, long long int Probability1) {
-        if (Probability0 == 0)
-            Qubit_Set_Observation[situation] = { 1,1 }, Probability1 = Fixed_Point;
-        else if (Probability0 == 1)
-            Qubit_Set_Observation[situation] = { 1,0 }, Probability0 = Fixed_Point;
+        if (Probability0 <= Fixed_Epsilon) {
+            Qubit_Set_Observation[situation] = { 1,1 };
+            Probability1 = Fixed_Point;
+        }
+        else if (Probability0 >= Fixed_Point - Fixed_Epsilon) {
+            Qubit_Set_Observation[situation] = { 1,0 };
+            Probability0 = Fixed_Point;
+        }
         else {
             std::random_device rd;
             std::mt19937_64 gen(rd());
@@ -654,16 +723,21 @@ public:
         long long int State = Qubit_Set_Observation[situation].second;
         long long int Probability = (State == 0) ? Probability0 : Probability1;
 
-        std::vector<FixedComplex> Qubit_Set_Value = Entangled_Qubit_Set[situation]->second,
-            New_Qubit_Set_Value((Qubit_Set_Value.size() >> 1) - (Qubit_Set_Value.size() == 2), FixedComplex());
+        std::vector<FixedComplex> Qubit_Set_Value = Entangled_Qubit_Set[situation]->second;
+
+        size_t new_size = Qubit_Set_Value.size() >> 1;
+        if (new_size == 0) new_size = 1;
+        std::vector<FixedComplex> New_Qubit_Set_Value(new_size, FixedComplex());
 
         std::vector<int> Qubit_Set = Entangled_Qubit_Set[situation]->first;
-
         int Qubit_Situation = GetSituation(situation);
 
-        for (unsigned long long int count = 0; count < (Qubit_Set_Value.size() >> 1) - (Qubit_Set_Value.size() == 2); count++)
-            if (Qubit_Set_Value[BitAdd(count, Qubit_Situation, State)].Real != 0 || Qubit_Set_Value[BitAdd(count, Qubit_Situation, State)].Imaginary != 0)
+        // 2. 迴圈條件改成直接使用 new_size，不要再減去 (Qubit_Set_Value.size() == 2)
+        for (unsigned long long int count = 0; count < new_size; count++) {
+            if (!QMath::IsZero(Qubit_Set_Value[BitAdd(count, Qubit_Situation, State)])) {
                 New_Qubit_Set_Value[count] = Qubit_Set_Value[BitAdd(count, Qubit_Situation, State)] / QMath::NewtonSqrt((int128_t)Probability << Fixed_shift);
+            }
+        }
 
         Entangled_Qubit_Set[situation]->second = New_Qubit_Set_Value;
 
@@ -689,14 +763,14 @@ public:
         long long int Probability0 = 0, Probability1 = 0;
 
         for (unsigned long long int count = 0; count < Qubit_Set_Value.size() >> 1; count++) {
-            if (Qubit_Set_Value[BitAdd(count, Qubit_Situation, 0ULL)].Real != 0 || Qubit_Set_Value[BitAdd(count, Qubit_Situation, 0ULL)].Imaginary != 0) {
+            if (!QMath::IsZero(Qubit_Set_Value[BitAdd(count, Qubit_Situation, 0ULL)])) {
                 int128_t Caculate = static_cast<int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count, Qubit_Situation, 0ULL)]));
                 Caculate *= Caculate;
                 Caculate >>= Fixed_shift;
                 Probability0 += static_cast<long long>(Caculate);
             }
 
-            if (Qubit_Set_Value[BitAdd(count, Qubit_Situation, 1ULL)].Real != 0 || Qubit_Set_Value[BitAdd(count, Qubit_Situation, 1ULL)].Imaginary != 0) {
+            if (!QMath::IsZero(Qubit_Set_Value[BitAdd(count, Qubit_Situation, 1ULL)])) {
                 int128_t Caculate = static_cast<int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count, Qubit_Situation, 1ULL)]));
                 Caculate *= Caculate;
                 Caculate >>= Fixed_shift;
@@ -715,14 +789,14 @@ public:
             Probability0 = 0, Probability1 = 0;
 
             for (unsigned long long int count = 0; count < Qubit_Set_Value.size() >> 1; count++) {
-                if (Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 0ULL)].Real != 0 || Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 0ULL)].Imaginary != 0) {
+                if (!QMath::IsZero(Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 0ULL)])) {
                     int128_t Caculate = static_cast<int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 0ULL)]));
                     Caculate *= Caculate;
                     Caculate >>= Fixed_shift;
                     Probability0 += static_cast<long long>(Caculate);
                 }
 
-                if (Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 1ULL)].Real != 0 || Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 1ULL)].Imaginary != 0) {
+                if (!QMath::IsZero(Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 1ULL)])) {
                     int128_t Caculate = static_cast<int128_t>(QMath::AbsoluteValue(Qubit_Set_Value[BitAdd(count, Qubit_Set.size() - setting - 1, 1ULL)]));
                     Caculate *= Caculate;
                     Caculate >>= Fixed_shift;
@@ -732,6 +806,11 @@ public:
 
             if (Probability0 == 0 || Probability1 == 0)
                 CutQubitSet(Qubit_Set[setting], Probability0, Probability1);
+        }
+
+        std::vector<int> remaining = Qubit_Set_Pointer->first;
+        if (!remaining.empty() && Entangled_Qubit_Set[remaining[0]] != nullptr) {
+            SplitEntangledGroup(remaining[0]);
         }
 
         return Qubit_Set_Observation[situation].second;
@@ -1008,9 +1087,7 @@ public:
             }
         }
 
-        std::vector<int> qubits_in_set = Entangled_Qubit_Set[q1]->first;
-        for (int count = 0; count < (int)qubits_in_set.size(); count++)
-            ExtractSeparatedQubit(qubits_in_set[count]);
+        SplitEntangledGroup(q1);
     }
 
     void ApplyThreeQubitGate(const int q1, const int q2, const int q3,
@@ -1052,9 +1129,7 @@ public:
             }
         }
 
-        std::vector<int> qubits_in_set = Entangled_Qubit_Set[q1]->first;
-        for (int count = 0; count < (int)qubits_in_set.size(); count++)
-            ExtractSeparatedQubit(qubits_in_set[count]);
+        SplitEntangledGroup(q1);
     }
 
     // 將指定的 qubit 強制初始化為 |0> (target_state=0) 或 |1> (target_state=1)
@@ -2139,7 +2214,7 @@ private:
         std::cout << "                  範例7: {If, {Parity,0,1,2,0}, {Z,3}}              (Q0,Q1,Q2 宇稱為偶(0)則對 Q3 做 Z)\n\n";
 
         std::cout << "[經典示範 (Examples)]\n";
-        std::cout << "▶ 量子遙傳 (Quantum Teleportation)\n";
+        std::cout << " 量子遙傳 (Quantum Teleportation)\n";
         std::cout << "  輸入: run \"3, {H,1}, {CNOT,1,2}, {CNOT,0,1}, {H,0}, {M,0}, {M,1}, {If,1,1,{X,2}}, {If,0,1,{Z,2}}\"\n";
         std::cout << "==================================================\n\n";
     }
